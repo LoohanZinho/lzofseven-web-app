@@ -93,6 +93,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const isMounted = useRef(true);
   const lastSavedState = useRef({ title: '', content: '', isPrivate: false, publicSlug: null });
   const justSavedTimeout = useRef<NodeJS.Timeout | null>(null);
+  const lastKnownNoteId = useRef(noteId);
 
   const editor = useEditor({
     extensions: [
@@ -112,7 +113,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     },
     editorProps: {
       attributes: {
-        class: 'prose-sm sm:prose lg:prose-lg xl:prose-2xl m-5 focus:outline-none',
+        class: 'prose prose-invert max-w-none focus:outline-none p-4 w-full h-full',
       },
     },
   });
@@ -139,9 +140,13 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
 
   useEffect(() => {
     setIsLoading(true);
-    // On note change, reset password and lock status
-    sessionPassword.current = '';
-    setIsLocked(false);
+    
+    // Reset password and lock status ONLY when the note ID actually changes
+    if (lastKnownNoteId.current !== noteId) {
+      sessionPassword.current = '';
+      setIsLocked(false);
+      lastKnownNoteId.current = noteId;
+    }
     
     const noteRef = doc(db, 'notes', noteId);
     const unsubscribe = onSnapshot(noteRef, (docSnapshot) => {
@@ -166,31 +171,30 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
       if (noteIsPrivate) {
         setEncryptedDbContent(dbEncrypted);
 
+        // If we have a password, try to decrypt. This handles server updates.
+        // If we don't, lock the note and prompt for it.
         if (sessionPassword.current) {
-          // If we have a password, try to decrypt. This handles server updates.
           try {
             const bytes = CryptoJS.AES.decrypt(dbEncrypted, sessionPassword.current);
             newContent = bytes.toString(CryptoJS.enc.Utf8);
             if (!newContent && dbEncrypted) throw new Error("Decryption failed");
             setContent(newContent);
-            setIsLocked(false); // Ensure it stays unlocked
+            setIsLocked(false);
           } catch (e) {
-            // This can happen if note was updated with a new password elsewhere
             console.error("Failed to decrypt with session password.", e);
-            sessionPassword.current = ''; // Invalidate password
+            sessionPassword.current = ''; 
             setIsLocked(true);
+            setPromptAction('unlock');
             setShowPasswordPrompt(true);
           }
         } else {
-          // No password in session, so we must be locked and need to prompt.
-          newContent = '';
-          setContent(newContent);
+          setContent('');
           setIsLocked(true);
           setPromptAction('unlock');
           setShowPasswordPrompt(true);
         }
       } else {
-        // Note is not private
+        // Note is not private, so it can't be locked
         newContent = data.content || '';
         setContent(newContent);
         setIsLocked(false);
@@ -519,7 +523,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
         ) : (
           <>
             <TiptapToolbar editor={editor} />
-            <EditorContent editor={editor} className="flex-grow p-4 overflow-y-auto" />
+            <EditorContent editor={editor} className="flex-grow overflow-y-auto" />
           </>
         )}
       </div>
