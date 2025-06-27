@@ -78,7 +78,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const [justSaved, setJustSaved] = useState(false);
 
   const [isPrivate, setIsPrivate] = useState(false);
-  const [isLocked, setIsLocked] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
   const [encryptedDbContent, setEncryptedDbContent] = useState('');
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -91,7 +91,6 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
 
   const sessionPassword = useRef('');
   const isMounted = useRef(true);
-  const hasLoadedFromServer = useRef(false);
   const lastSavedState = useRef({ title: '', content: '', isPrivate: false, publicSlug: null });
   const justSavedTimeout = useRef<NodeJS.Timeout | null>(null);
 
@@ -129,7 +128,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   }, []);
 
   useEffect(() => {
-    if (editor && !editor.isDestroyed && hasLoadedFromServer.current) {
+    if (editor && !editor.isDestroyed) {
       const { from, to } = editor.state.selection;
       if (editor.getHTML() !== content) {
           editor.commands.setContent(content, false, { preserveWhitespace: "full" });
@@ -140,80 +139,86 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
 
   useEffect(() => {
     setIsLoading(true);
-    hasLoadedFromServer.current = false;
+    // On note change, reset password and lock status
+    sessionPassword.current = '';
+    setIsLocked(false);
     
     const noteRef = doc(db, 'notes', noteId);
     const unsubscribe = onSnapshot(noteRef, (docSnapshot) => {
-      if (docSnapshot.exists() && isMounted.current) {
-        const data = docSnapshot.data();
-        
-        setPinned(data.pinned || false);
-        setUpdatedAt(data.updatedAt?.toDate() || null);
-        const noteIsPrivate = data.isPrivate || false;
-        setIsPrivate(noteIsPrivate);
-        setPublicSlug(data.publicSlug || null);
-        let newContent = '';
-
-        if (!docSnapshot.metadata.hasPendingWrites || !hasLoadedFromServer.current) {
-            setTitle(data.title || '');
-
-            if (noteIsPrivate) {
-                const dbEncrypted = data.encryptedContent || '';
-                setEncryptedDbContent(dbEncrypted);
-
-                if (sessionPassword.current) {
-                    try {
-                        const bytes = CryptoJS.AES.decrypt(dbEncrypted, sessionPassword.current);
-                        newContent = bytes.toString(CryptoJS.enc.Utf8);
-                        if (!newContent && dbEncrypted) { 
-                            throw new Error("Decryption resulted in empty content, likely wrong password.");
-                        }
-                        setIsLocked(false);
-                    } catch (error) {
-                        console.error("Failed to decrypt with session password, re-locking.", error);
-                        newContent = '';
-                        setIsLocked(true);
-                        setPromptAction('unlock');
-                        setShowPasswordPrompt(true);
-                        sessionPassword.current = '';
-                    }
-                } else {
-                    newContent = '';
-                    setIsLocked(true);
-                    setPromptAction('unlock');
-                    setShowPasswordPrompt(true);
-                }
-            } else {
-                newContent = data.content || '';
-                setIsLocked(false);
-                setEncryptedDbContent('');
-                sessionPassword.current = '';
-            }
-            setContent(newContent);
-            lastSavedState.current = { 
-              title: data.title || '', 
-              content: newContent, 
-              isPrivate: noteIsPrivate,
-              publicSlug: data.publicSlug || null
-            };
-        }
-        
-        setIsLoading(false);
-        hasLoadedFromServer.current = true;
-      } else {
+      if (!docSnapshot.exists() || !isMounted.current) {
         console.error("Note not found!");
         setIsLoading(false);
+        return;
       }
+      
+      const data = docSnapshot.data();
+      const noteIsPrivate = data.isPrivate || false;
+      const dbEncrypted = data.encryptedContent || '';
+      let newContent = '';
+
+      // Always update metadata
+      setTitle(currentTitle => docSnapshot.metadata.hasPendingWrites ? currentTitle : data.title || '');
+      setPinned(data.pinned || false);
+      setUpdatedAt(data.updatedAt?.toDate() || null);
+      setPublicSlug(data.publicSlug || null);
+      setIsPrivate(noteIsPrivate);
+
+      if (noteIsPrivate) {
+        setEncryptedDbContent(dbEncrypted);
+
+        if (sessionPassword.current) {
+          // If we have a password, try to decrypt. This handles server updates.
+          try {
+            const bytes = CryptoJS.AES.decrypt(dbEncrypted, sessionPassword.current);
+            newContent = bytes.toString(CryptoJS.enc.Utf8);
+            if (!newContent && dbEncrypted) throw new Error("Decryption failed");
+            setContent(newContent);
+            setIsLocked(false); // Ensure it stays unlocked
+          } catch (e) {
+            // This can happen if note was updated with a new password elsewhere
+            console.error("Failed to decrypt with session password.", e);
+            sessionPassword.current = ''; // Invalidate password
+            setIsLocked(true);
+            setShowPasswordPrompt(true);
+          }
+        } else {
+          // No password in session, so we must be locked and need to prompt.
+          newContent = '';
+          setContent(newContent);
+          setIsLocked(true);
+          setPromptAction('unlock');
+          setShowPasswordPrompt(true);
+        }
+      } else {
+        // Note is not private
+        newContent = data.content || '';
+        setContent(newContent);
+        setIsLocked(false);
+        setEncryptedDbContent('');
+        sessionPassword.current = '';
+      }
+      
+      if (!docSnapshot.metadata.hasPendingWrites) {
+          lastSavedState.current = { 
+            title: data.title || '', 
+            content: newContent, 
+            isPrivate: noteIsPrivate,
+            publicSlug: data.publicSlug || null
+          };
+      }
+      
+      setIsLoading(false);
     });
 
     return () => unsubscribe();
   }, [noteId]);
   
   const performSave = useCallback(async (isManualSave = false): Promise<string> => {
-    if (!hasLoadedFromServer.current) return '';
+    if (isLoading) return '';
     
     const currentContent = editor?.getHTML() || content;
     const hasChanged = title !== lastSavedState.current.title || currentContent !== lastSavedState.current.content || isPrivate !== lastSavedState.current.isPrivate;
+    
     if (!isManualSave && !hasChanged) {
       return title; 
     }
@@ -245,11 +250,13 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     if (isPrivate) {
         if (!sessionPassword.current) {
             console.warn("Attempted to save private note without a password. Save aborted.");
+            setIsSaving(false);
             return title;
         }
         const encrypted = CryptoJS.AES.encrypt(currentContent, sessionPassword.current).toString();
         dataToSave.encryptedContent = encrypted;
         dataToSave.content = '';
+        setEncryptedDbContent(encrypted); // Keep our local encrypted state in sync
     } else {
         dataToSave.content = currentContent;
         dataToSave.encryptedContent = '';
@@ -258,9 +265,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     try {
       await updateDoc(noteRef, { ...dataToSave });
       lastSavedState.current = { title: dataToSave.title, content: currentContent, isPrivate: isPrivate, publicSlug: publicSlug };
-      if (isPrivate) {
-        setEncryptedDbContent(dataToSave.encryptedContent);
-      }
+
       if (isMounted.current) {
         setIsSaving(false);
         setJustSaved(true);
@@ -277,11 +282,11 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
       }
       return '';
     }
-  }, [noteId, title, content, isPrivate, allNotes, publicSlug, editor]);
+  }, [noteId, title, content, isPrivate, allNotes, publicSlug, editor, isLoading]);
 
   useEffect(() => {
     const hasChanged = title !== lastSavedState.current.title || content !== lastSavedState.current.content || isPrivate !== lastSavedState.current.isPrivate;
-    if (hasLoadedFromServer.current && !isLocked && hasChanged) {
+    if (!isLoading && !isLocked && hasChanged) {
         performSave(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -305,8 +310,12 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   
   const handleTogglePrivate = (checked: boolean) => {
     if (checked) {
-      setPromptAction('create');
-      setShowPasswordPrompt(true);
+      if(!sessionPassword.current){
+        setPromptAction('create');
+        setShowPasswordPrompt(true);
+      } else {
+        setIsPrivate(true);
+      }
     } else {
       if (!isLocked) {
         setIsPrivate(false);
@@ -341,6 +350,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     } else if (promptAction === 'create') {
       sessionPassword.current = password;
       setIsPrivate(true);
+      setIsLocked(false); // A new password also unlocks the note
       setShowPasswordPrompt(false);
       setPasswordInput('');
       toast({ title: "Nota protegida 🔒", description: "Sua nota agora será salva com criptografia." });
@@ -409,6 +419,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
           <AlertDialogCancel onClick={() => {
             setShowPasswordPrompt(false);
             setPasswordInput('');
+            // If user cancels unlock, we can't do anything, the note remains locked.
           }}>
             Cancelar
           </AlertDialogCancel>
@@ -443,7 +454,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
         />
         <div className="flex items-center gap-1">
            <div className="flex items-center space-x-2">
-                <Switch id="private-note-toggle" checked={isPrivate} onCheckedChange={handleTogglePrivate} disabled={isLoading}/>
+                <Switch id="private-note-toggle" checked={isPrivate} onCheckedChange={handleTogglePrivate} disabled={isLoading || isLocked}/>
                 <Label htmlFor="private-note-toggle">Privada</Label>
             </div>
           <Button variant="ghost" size="icon" onClick={handleManualSave} aria-label="Salvar nota e criar nova">
