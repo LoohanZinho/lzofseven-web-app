@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Pin, Save, Lock } from 'lucide-react';
+import { Pin, Save, Lock, Share2, Copy, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -27,6 +27,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 type NoteEditorProps = {
   noteId: string;
@@ -40,6 +45,21 @@ const parseTags = (content: string): string[] => {
   if (!matches) return [];
   return [...new Set(matches.map(tag => tag.substring(1)))];
 };
+
+const slugify = (text: string) => {
+  const a = 'àáâäæãåāăąçćčđďèéêëēėęěğǵḧîïíīįìłḿñńǹňôöòóœøōõőṕŕřßśšşșťțûüùúūǘůűųẃẍÿýžźż·/_,:;'
+  const b = 'aaaaaaaaaacccddeeeeeeeegghiiiiiilmnnnnoooooooooprrssssssttuuuuuuuuuwxyyzzz------'
+  const p = new RegExp(a.split('').join('|'), 'g')
+
+  return text.toString().toLowerCase()
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(p, c => b.charAt(a.indexOf(c))) // Replace special characters
+    .replace(/&/g, '-and-') // Replace & with 'and'
+    .replace(/[^\w\-]+/g, '') // Remove all non-word chars
+    .replace(/\-\-+/g, '-') // Replace multiple - with single -
+    .replace(/^-+/, '') // Trim - from start of text
+    .replace(/-+$/, '') // Trim - from end of text
+}
 
 export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEditorProps) {
   const [title, setTitle] = useState('');
@@ -56,6 +76,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [promptAction, setPromptAction] = useState<'unlock' | 'create'>('unlock');
+  const [publicSlug, setPublicSlug] = useState<string | null>(null);
 
   const { toast } = useToast();
   const debouncedTitle = useDebounce(title, 1500);
@@ -64,7 +85,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const sessionPassword = useRef('');
   const isMounted = useRef(true);
   const hasLoadedFromServer = useRef(false);
-  const lastSavedState = useRef({ title: '', content: '', isPrivate: false });
+  const lastSavedState = useRef({ title: '', content: '', isPrivate: false, publicSlug: null });
   const justSavedTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -90,6 +111,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
         setUpdatedAt(data.updatedAt?.toDate() || null);
         const noteIsPrivate = data.isPrivate || false;
         setIsPrivate(noteIsPrivate);
+        setPublicSlug(data.publicSlug || null);
 
         if (!docSnapshot.metadata.hasPendingWrites || !hasLoadedFromServer.current) {
             setTitle(data.title || '');
@@ -108,7 +130,12 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
                 setEncryptedDbContent('');
                 sessionPassword.current = '';
             }
-            lastSavedState.current = { title: data.title || '', content: data.content || '', isPrivate: noteIsPrivate };
+            lastSavedState.current = { 
+              title: data.title || '', 
+              content: data.content || '', 
+              isPrivate: noteIsPrivate,
+              publicSlug: data.publicSlug || null
+            };
         }
         
         setIsLoading(false);
@@ -169,7 +196,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
 
     try {
       await updateDoc(noteRef, { ...dataToSave });
-      lastSavedState.current = { title: dataToSave.title, content: content, isPrivate: isPrivate };
+      lastSavedState.current = { title: dataToSave.title, content: content, isPrivate: isPrivate, publicSlug: publicSlug };
       if (isPrivate) {
         setEncryptedDbContent(dataToSave.encryptedContent);
       }
@@ -189,7 +216,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
       }
       return '';
     }
-  }, [noteId, title, content, isPrivate, allNotes]);
+  }, [noteId, title, content, isPrivate, allNotes, publicSlug]);
 
   useEffect(() => {
     const hasChanged = title !== lastSavedState.current.title || content !== lastSavedState.current.content || isPrivate !== lastSavedState.current.isPrivate;
@@ -259,6 +286,35 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     }
   };
 
+  const handleGenerateLink = async () => {
+    if (isPrivate) {
+      toast({ variant: 'destructive', title: "Ação bloqueada", description: "Notas privadas não podem ser compartilhadas."});
+      return;
+    }
+
+    const baseSlug = slugify(title.trim() || 'nota-sem-titulo');
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    const newSlug = `${baseSlug}-${randomSuffix}`;
+
+    const noteRef = doc(db, 'notes', noteId);
+    await updateDoc(noteRef, { publicSlug: newSlug, updatedAt: serverTimestamp() });
+    
+    toast({ title: "Link público gerado!", description: "Agora você pode copiar o link para compartilhar."});
+  };
+
+  const handleStopSharing = async () => {
+    const noteRef = doc(db, 'notes', noteId);
+    await updateDoc(noteRef, { publicSlug: null, updatedAt: serverTimestamp() });
+    toast({ title: "Compartilhamento interrompido", description: "O link público não está mais ativo."});
+  }
+
+  const handleCopyLink = () => {
+    if (!publicSlug) return;
+    const url = `${window.location.origin}/n/${publicSlug}`;
+    navigator.clipboard.writeText(url);
+    toast({ title: "Link copiado!", description: "Link copiado para a área de transferência."});
+  }
+
   const getStatusMessage = () => {
     if (isSaving) return 'Salvando...';
     if (justSaved) return 'Salvo ✅';
@@ -292,9 +348,6 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
           <AlertDialogCancel onClick={() => {
             setShowPasswordPrompt(false);
             setPasswordInput('');
-            if (promptAction === 'unlock') {
-                // If user cancels unlock, we do nothing, note stays locked.
-            }
           }}>
             Cancelar
           </AlertDialogCancel>
@@ -327,10 +380,10 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
           aria-label="Título da nota"
           disabled={isLocked}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
            <div className="flex items-center space-x-2">
                 <Switch id="private-note-toggle" checked={isPrivate} onCheckedChange={handleTogglePrivate} disabled={isLoading}/>
-                <Label htmlFor="private-note-toggle">Privada 🔐</Label>
+                <Label htmlFor="private-note-toggle">Privada</Label>
             </div>
           <Button variant="ghost" size="icon" onClick={handleManualSave} aria-label="Salvar nota e criar nova">
             <Save className="h-5 w-5 text-muted-foreground" />
@@ -338,6 +391,48 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
           <Button variant="ghost" size="icon" onClick={handleTogglePin} aria-label="Fixar nota">
             <Pin className={cn("h-5 w-5", pinned ? "fill-current text-foreground" : "text-muted-foreground")} />
           </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Compartilhar nota" disabled={isPrivate || isLocked}>
+                    <Share2 className="h-5 w-5 text-muted-foreground" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+                <div className="grid gap-4">
+                    <div className="space-y-2">
+                        <h4 className="font-medium leading-none">Compartilhar Nota</h4>
+                        <p className="text-sm text-muted-foreground">
+                            {publicSlug 
+                                ? "Qualquer pessoa com este link poderá ver esta nota."
+                                : "Gere um link público para compartilhar esta nota (somente leitura)."
+                            }
+                        </p>
+                    </div>
+                    {publicSlug ? (
+                        <div className="grid gap-2">
+                            <Label htmlFor="link">Link Público</Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    id="link"
+                                    value={`${window.location.origin}/n/${publicSlug}`}
+                                    readOnly
+                                    className="h-8 flex-1"
+                                />
+                                <Button onClick={handleCopyLink} size="icon" className="h-8 w-8">
+                                    <Copy className="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <Button onClick={handleStopSharing} variant="destructive" size="sm" className="mt-2 w-full">
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Parar de compartilhar
+                            </Button>
+                        </div>
+                    ) : (
+                        <Button onClick={handleGenerateLink} disabled={isPrivate || isLocked}>Gerar Link</Button>
+                    )}
+                </div>
+            </PopoverContent>
+        </Popover>
         </div>
       </div>
       {isLocked && isPrivate ? (
