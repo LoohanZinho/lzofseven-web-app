@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { signInWithRedirect } from 'firebase/auth';
+import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '@/firebase/firebaseConfig';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
@@ -12,7 +12,8 @@ export default function Login() {
   const handleLogin = async () => {
     setIsLoggingIn(true);
     try {
-      await signInWithRedirect(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider);
+      // onAuthStateChanged in page.tsx will handle the rest.
     } catch (error) {
       console.error("Erro ao fazer login com o Google:", error);
       setIsLoggingIn(false);
@@ -28,7 +29,7 @@ export default function Login() {
            {isLoggingIn ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Redirecionando...
+              Aguardando...
             </>
           ) : (
             <>
