@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Star } from 'lucide-react';
+import { Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,16 +33,17 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
+  const isInitialLoadRef = useRef(true);
+  const hasUnsavedChanges = useRef(false);
+
   // Debounce user input to avoid saving on every keystroke
   const debouncedTitle = useDebounce(title, 1000);
   const debouncedContent = useDebounce(content, 1000);
 
-  // Ref to track if this is the first time the component loads for a specific note
-  const isInitialLoadRef = useRef(true);
-
   // Load note data from Firestore
   useEffect(() => {
-    isInitialLoadRef.current = true; // Reset for new note
+    isInitialLoadRef.current = true;
+    hasUnsavedChanges.current = false;
     setIsLoading(true);
     setSaveStatus('idle');
 
@@ -51,8 +52,6 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
         
-        // Only set state on the very first load. This prevents overwriting
-        // the user's current input with data from the server (e.g., an echo of their own save).
         if (isInitialLoadRef.current) {
           setTitle(data.title || '');
           setContent(data.content || '');
@@ -73,9 +72,8 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
 
   // Effect to save the note when debounced values change
   useEffect(() => {
-    // Do not save on the initial render cycle
-    if (isInitialLoadRef.current) {
-      return;
+    if (isInitialLoadRef.current || !hasUnsavedChanges.current) {
+        return;
     }
 
     setSaveStatus('saving');
@@ -88,6 +86,7 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
       tags: currentTags,
       updatedAt: serverTimestamp(),
     }).then(() => {
+      hasUnsavedChanges.current = false;
       setSaveStatus('saved');
       // After showing "Salvo", revert to "idle" to show the timestamp again.
       setTimeout(() => setSaveStatus('idle'), 2000);
@@ -96,7 +95,6 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
       setSaveStatus('idle'); // Revert on error too
     });
 
-  // This effect runs only when the debounced values change, or the noteId changes.
   }, [debouncedTitle, debouncedContent, noteId]);
   
   const handleTogglePin = async () => {
@@ -104,6 +102,16 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
     const newPinnedStatus = !pinned;
     setPinned(newPinnedStatus); // Optimistic update
     await updateDoc(noteRef, { pinned: newPinnedStatus, updatedAt: serverTimestamp() });
+  };
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    hasUnsavedChanges.current = true;
+    setTitle(e.target.value);
+  };
+  
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    hasUnsavedChanges.current = true;
+    setContent(e.target.value);
   };
 
   const getStatusMessage = () => {
@@ -129,18 +137,18 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
       <div className="flex items-center justify-between border-b border-border p-4">
         <Input
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={handleTitleChange}
           placeholder="Título da sua nota..."
           className="h-auto flex-grow border-0 bg-transparent p-0 text-2xl font-bold focus-visible:ring-0 focus-visible:ring-offset-0"
           aria-label="Título da nota"
         />
         <Button variant="ghost" size="icon" onClick={handleTogglePin} aria-label="Fixar nota">
-          <Star className={cn("h-5 w-5", pinned ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")} />
+          <Pin className={cn("h-5 w-5", pinned ? "fill-current text-foreground" : "text-muted-foreground")} />
         </Button>
       </div>
       <Textarea
         value={content}
-        onChange={(e) => setContent(e.target.value)}
+        onChange={handleContentChange}
         placeholder="Comece a escrever… tudo salva sozinho. Use #tags para organizar."
         className="flex-grow resize-none border-0 bg-transparent p-4 text-base focus-visible:ring-0 focus-visible:ring-offset-0 md:p-8"
         aria-label="Editor de notas"

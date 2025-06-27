@@ -1,6 +1,6 @@
 import type { NoteSummary } from '@/app/page';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Trash2, Star } from 'lucide-react';
+import { PlusCircle, Trash2, Pin } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from './ui/scroll-area';
@@ -39,7 +39,7 @@ export default function NotesList({ notes, activeNoteId, onSelectNote, onNewNote
                         )}
                     >
                         <div className="w-full flex items-center gap-2">
-                          {note.pinned && <Star className="h-4 w-4 flex-shrink-0 text-yellow-400 fill-yellow-400" />}
+                          {note.pinned && <Pin className="h-4 w-4 flex-shrink-0 fill-current" />}
                           <span className="truncate text-sm font-medium">{note.title || "Nota sem título"}</span>
                         </div>
                         {note.tags && note.tags.length > 0 && (
