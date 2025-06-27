@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase/firebaseConfig';
-import { useDebounce } from '@/hooks/useDebounce';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,61 +32,81 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
-  const debouncedTitle = useDebounce(title, 500);
-  const debouncedContent = useDebounce(content, 500);
+  // We store the pristine data from the server to compare against
+  const [serverState, setServerState] = useState({ title: '', content: '' });
 
-  const isInitialLoadDone = useRef(false);
+  // Ref to avoid running save effect on initial data load
+  const isMounted = useRef(false);
 
-  // Firestore real-time listener
+  // Load note data from Firestore
   useEffect(() => {
     setIsLoading(true);
-    isInitialLoadDone.current = false;
+    isMounted.current = false; // Reset on note change
     const noteRef = doc(db, 'notes', noteId);
     const unsubscribe = onSnapshot(noteRef, (docSnapshot) => {
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
-        // Avoid overwriting local state if the change came from this client
+        
+        // Only update local state if the change is from the server, not a local echo
         if (!docSnapshot.metadata.hasPendingWrites) {
-          setTitle(data.title || '');
-          setContent(data.content || '');
+            setTitle(data.title || '');
+            setContent(data.content || '');
+            setServerState({ title: data.title || '', content: data.content || '' });
         }
         setPinned(data.pinned || false);
         setUpdatedAt(data.updatedAt?.toDate() || null);
+        
+        // Mark as mounted after the first data load completes
+        if (!isMounted.current) {
+            isMounted.current = true;
+        }
+        setIsLoading(false);
       } else {
         console.error("Note not found!");
+        setIsLoading(false);
       }
-      setIsLoading(false);
-      // Give a moment for debounced values to catch up before enabling autosave
-      setTimeout(() => { isInitialLoadDone.current = true; }, 500);
     });
 
-    return () => unsubscribe();
+    return () => {
+        unsubscribe();
+    };
   }, [noteId]);
 
-  // Debounced autosave
-  useEffect(() => {
-    // Prevent saving on initial load or if the note ID is not set
-    if (!isInitialLoadDone.current || !noteId) return;
-
+  // Debounced autosave logic
+  const debouncedSave = useCallback(() => {
     const noteRef = doc(db, 'notes', noteId);
-    setSaveStatus('saving');
+    const currentTags = parseTags(content);
     
-    const tags = parseTags(debouncedContent);
+    setSaveStatus('saving');
 
     updateDoc(noteRef, {
-      title: debouncedTitle,
-      content: debouncedContent,
-      tags: tags,
+      title: title,
+      content: content,
+      tags: currentTags,
       updatedAt: serverTimestamp(),
     }).then(() => {
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     }).catch(error => {
-        console.error("Error updating note:", error);
-        setSaveStatus('idle');
+      console.error("Error updating note:", error);
+      setSaveStatus('idle');
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedTitle, debouncedContent, noteId]);
+  }, [noteId, title, content]);
+
+  useEffect(() => {
+    // Don't save on first render or if data hasn't changed
+    if (!isMounted.current || (title === serverState.title && content === serverState.content)) {
+      return;
+    }
+    
+    const handler = setTimeout(() => {
+        debouncedSave();
+    }, 1000); // 1 second debounce delay
+
+    return () => {
+        clearTimeout(handler);
+    };
+  }, [title, content, serverState, debouncedSave]);
   
   const handleTogglePin = async () => {
     const noteRef = doc(db, 'notes', noteId);
