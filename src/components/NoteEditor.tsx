@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import type { NoteSummary } from '@/app/page';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase/firebaseConfig';
 import { Input } from '@/components/ui/input';
@@ -15,17 +16,18 @@ import { useDebounce } from '@/hooks/useDebounce';
 
 type NoteEditorProps = {
   noteId: string;
+  allNotes: NoteSummary[];
+  onSaveAndNew: () => Promise<void>;
 };
 
 const parseTags = (content: string): string[] => {
-  const tagRegex = /#([a-zA-Z0-9_]+)/g;
+  const tagRegex = /#([\p{L}\p{N}_]+)/gu;
   const matches = content.match(tagRegex);
   if (!matches) return [];
-  // Return unique tags without the '#'
   return [...new Set(matches.map(tag => tag.substring(1)))];
 };
 
-export default function NoteEditor({ noteId }: NoteEditorProps) {
+export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEditorProps) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [pinned, setPinned] = useState(false);
@@ -36,70 +38,93 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
   const debouncedTitle = useDebounce(title, 1500);
   const debouncedContent = useDebounce(content, 1500);
   
-  const hasUnsavedChanges = useRef(false);
-
-  const performSave = useCallback(async () => {
-    setSaveStatus('saving');
-    const noteRef = doc(db, 'notes', noteId);
-    const currentTags = parseTags(content);
-
-    try {
-      await updateDoc(noteRef, {
-        title: title,
-        content: content,
-        tags: currentTags,
-        updatedAt: serverTimestamp(),
-      });
-      hasUnsavedChanges.current = false;
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch (error) {
-      console.error("Error updating note:", error);
-      setSaveStatus('idle'); // Revert on error
-    }
-  }, [noteId, title, content]);
+  const isMounted = useRef(false);
+  const hasLoadedFromServer = useRef(false);
 
   // Load note data from Firestore
   useEffect(() => {
     setIsLoading(true);
-    hasUnsavedChanges.current = false; // Reset on note change
+    hasLoadedFromServer.current = false;
+    isMounted.current = true;
     
     const noteRef = doc(db, 'notes', noteId);
     const unsubscribe = onSnapshot(noteRef, (docSnapshot) => {
-      if (docSnapshot.exists()) {
+      if (docSnapshot.exists() && isMounted.current) {
         const data = docSnapshot.data();
-        
-        // Only update local state if there are no unsaved changes.
-        // This prevents overwriting user's typing with stale data from the server.
-        if (!hasUnsavedChanges.current) {
-          setTitle(data.title || '');
-          setContent(data.content || '');
-        }
-        
+        setTitle(data.title || '');
+        setContent(data.content || '');
         setPinned(data.pinned || false);
         setUpdatedAt(data.updatedAt?.toDate() || null);
         setIsLoading(false);
+        hasLoadedFromServer.current = true;
       } else {
         console.error("Note not found!");
         setIsLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted.current = false;
+      unsubscribe();
+    };
   }, [noteId]);
+  
+  const performSave = useCallback(async (successCallback?: () => void) => {
+    if (!hasLoadedFromServer.current) return;
+
+    setSaveStatus('saving');
+    const noteRef = doc(db, 'notes', noteId);
+    
+    let finalTitle = title.trim();
+    if (finalTitle === '') {
+      const untitledNotes = allNotes.filter(n => n.title.startsWith('Nota sem título'));
+      const existingNumbers = untitledNotes.map(n => {
+        const num = parseInt(n.title.replace('Nota sem título', '').trim());
+        return isNaN(num) ? 0 : num;
+      });
+      const maxNum = Math.max(0, ...existingNumbers);
+      finalTitle = `Nota sem título ${maxNum + 1}`;
+    }
+
+    const dataToSave = {
+      title: finalTitle,
+      content: content,
+      tags: parseTags(content),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await updateDoc(noteRef, dataToSave);
+      
+      if(finalTitle !== title) {
+        setTitle(finalTitle); // Update local state if title was auto-generated
+      }
+      
+      setSaveStatus('saved');
+      if (successCallback) {
+        successCallback();
+      }
+      setTimeout(() => {
+        if (isMounted.current) setSaveStatus('idle');
+      }, 2000);
+    } catch (error) {
+      console.error("Error updating note:", error);
+      if (isMounted.current) setSaveStatus('idle');
+    }
+  }, [noteId, title, content, allNotes]);
+
 
   // Effect to auto-save the note when debounced values change
   useEffect(() => {
-    if (hasUnsavedChanges.current) {
-        performSave();
+    // Only run auto-save after initial load and if it's not the first render
+    if (hasLoadedFromServer.current && isMounted.current) {
+      performSave();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedTitle, debouncedContent]);
   
-  const handleManualSave = () => {
-    if (hasUnsavedChanges.current) {
-      performSave();
-    }
+  const handleManualSave = async () => {
+    await performSave(onSaveAndNew);
   };
 
   const handleTogglePin = async () => {
@@ -107,16 +132,6 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
     const newPinnedStatus = !pinned;
     setPinned(newPinnedStatus); // Optimistic update
     await updateDoc(noteRef, { pinned: newPinnedStatus, updatedAt: serverTimestamp() });
-  };
-
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    hasUnsavedChanges.current = true;
-    setTitle(e.target.value);
-  };
-  
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    hasUnsavedChanges.current = true;
-    setContent(e.target.value);
   };
 
   const getStatusMessage = () => {
@@ -142,13 +157,13 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
       <div className="flex items-center justify-between border-b border-border p-4 gap-2">
         <Input
           value={title}
-          onChange={handleTitleChange}
+          onChange={(e) => setTitle(e.target.value)}
           placeholder="Título da sua nota..."
           className="h-auto flex-grow border-0 bg-transparent p-0 text-2xl font-bold focus-visible:ring-0 focus-visible:ring-offset-0"
           aria-label="Título da nota"
         />
         <div className="flex items-center">
-          <Button variant="ghost" size="icon" onClick={handleManualSave} aria-label="Salvar nota">
+          <Button variant="ghost" size="icon" onClick={handleManualSave} aria-label="Salvar nota e criar nova">
             <Save className="h-5 w-5 text-muted-foreground" />
           </Button>
           <Button variant="ghost" size="icon" onClick={handleTogglePin} aria-label="Fixar nota">
@@ -158,7 +173,7 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
       </div>
       <Textarea
         value={content}
-        onChange={handleContentChange}
+        onChange={(e) => setContent(e.target.value)}
         placeholder="Comece a escrever… tudo salva sozinho. Use #tags para organizar."
         className="flex-grow resize-none border-0 bg-transparent p-4 text-base focus-visible:ring-0 focus-visible:ring-offset-0 md:p-8"
         aria-label="Editor de notas"

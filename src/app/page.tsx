@@ -64,7 +64,7 @@ export default function HomePage() {
         });
         setNotes(notesData);
 
-        if (notesData.length > 0 && (!activeNoteId || !notesData.some(n => n.id === activeNoteId))) {
+        if (notesData.length > 0 && !activeNoteId) {
            setActiveNoteId(notesData[0].id);
         } else if (notesData.length === 0) {
             handleNewNote(true);
@@ -102,17 +102,22 @@ export default function HomePage() {
   };
 
   const handleDeleteNote = async (noteId: string) => {
+    const noteToDeleteIndex = filteredNotes.findIndex(n => n.id === noteId);
+    
     if (noteId === activeNoteId) {
-      const currentIndex = filteredNotes.findIndex(n => n.id === noteId);
       if (filteredNotes.length > 1) {
-        const nextNote = filteredNotes[currentIndex > 0 ? currentIndex - 1 : 1];
+        const nextNote = filteredNotes[noteToDeleteIndex > 0 ? noteToDeleteIndex - 1 : 1];
         setActiveNoteId(nextNote.id);
       } else {
         setActiveNoteId(null);
-        handleNewNote(true);
       }
     }
+    
     await deleteDoc(doc(db, 'notes', noteId));
+    
+    if (activeNoteId === null && filteredNotes.length <=1) {
+        handleNewNote(true);
+    }
   }
 
   const allTags = useMemo(() => {
@@ -143,6 +148,10 @@ export default function HomePage() {
       setActiveNoteId(filteredNotes[0].id);
     }
   }, [filteredNotes, activeNoteId]);
+
+  const handleSaveAndNew = async () => {
+    await handleNewNote(true);
+  }
 
   const SidebarInnerContent = () => (
     <>
@@ -202,7 +211,12 @@ export default function HomePage() {
         </aside>
         <main className="flex-1 flex flex-col">
           {activeNoteId ? (
-            <NoteEditor key={activeNoteId} noteId={activeNoteId} />
+            <NoteEditor 
+              key={activeNoteId} 
+              noteId={activeNoteId}
+              allNotes={notes}
+              onSaveAndNew={handleSaveAndNew}
+            />
           ) : (
              <div className="flex h-full flex-col items-center justify-center p-8 text-center">
               {loadingNotes ? (
