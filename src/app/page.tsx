@@ -20,6 +20,7 @@ export type NoteSummary = {
   title: string;
   pinned: boolean;
   tags: string[];
+  isPrivate: boolean;
 };
 
 export default function HomePage() {
@@ -60,6 +61,7 @@ export default function HomePage() {
             title: data.title || 'Nota sem título',
             pinned: data.pinned || false,
             tags: data.tags || [],
+            isPrivate: data.isPrivate || false,
           });
         });
         setNotes(notesData);
@@ -89,6 +91,8 @@ export default function HomePage() {
       const newNoteRef = await addDoc(collection(db, 'notes'), {
         title: '',
         content: '',
+        encryptedContent: '',
+        isPrivate: false,
         ownerId: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
