@@ -38,7 +38,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const debouncedTitle = useDebounce(title, 1500);
   const debouncedContent = useDebounce(content, 1500);
   
-  const isMounted = useRef(false);
+  const isMounted = useRef(true);
   const hasLoadedFromServer = useRef(false);
 
   // Load note data from Firestore
@@ -51,8 +51,14 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     const unsubscribe = onSnapshot(noteRef, (docSnapshot) => {
       if (docSnapshot.exists() && isMounted.current) {
         const data = docSnapshot.data();
-        setTitle(data.title || '');
-        setContent(data.content || '');
+        
+        // This check prevents overwriting user's real-time input with
+        // a slightly delayed echo from the database.
+        if (!docSnapshot.metadata.hasPendingWrites) {
+          setTitle(data.title || '');
+          setContent(data.content || '');
+        }
+        
         setPinned(data.pinned || false);
         setUpdatedAt(data.updatedAt?.toDate() || null);
         setIsLoading(false);
@@ -69,44 +75,40 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     };
   }, [noteId]);
   
-  const performSave = useCallback(async (successCallback?: () => void) => {
+  const performSave = useCallback(async (isManualSave = false) => {
     if (!hasLoadedFromServer.current) return;
 
     setSaveStatus('saving');
     const noteRef = doc(db, 'notes', noteId);
     
     let finalTitle = title.trim();
-    if (finalTitle === '') {
-      const untitledNotes = allNotes.filter(n => n.title.startsWith('Nota sem título'));
-      const existingNumbers = untitledNotes.map(n => {
-        const num = parseInt(n.title.replace('Nota sem título', '').trim());
-        return isNaN(num) ? 0 : num;
-      });
-      const maxNum = Math.max(0, ...existingNumbers);
-      finalTitle = `Nota sem título ${maxNum + 1}`;
+    if (finalTitle === '' && (content.trim() || isManualSave)) {
+        const untitledNotes = allNotes.filter(n => n.id !== noteId && n.title.startsWith('Nota sem título'));
+        const existingNumbers = untitledNotes.map(n => {
+            const numPart = n.title.replace('Nota sem título', '').trim();
+            if (numPart === '') return 1;
+            const num = parseInt(numPart);
+            return isNaN(num) ? 0 : num;
+        });
+        const maxNum = existingNumbers.length > 0 ? Math.max(0, ...existingNumbers) : 0;
+        finalTitle = `Nota sem título ${maxNum + 1}`;
     }
 
     const dataToSave = {
       title: finalTitle,
-      content: content,
+      content,
       tags: parseTags(content),
       updatedAt: serverTimestamp(),
     };
 
     try {
       await updateDoc(noteRef, dataToSave);
-      
-      if(finalTitle !== title) {
-        setTitle(finalTitle); // Update local state if title was auto-generated
+      if (isMounted.current) {
+        setSaveStatus('saved');
+        setTimeout(() => {
+          if (isMounted.current) setSaveStatus('idle');
+        }, 2000);
       }
-      
-      setSaveStatus('saved');
-      if (successCallback) {
-        successCallback();
-      }
-      setTimeout(() => {
-        if (isMounted.current) setSaveStatus('idle');
-      }, 2000);
     } catch (error) {
       console.error("Error updating note:", error);
       if (isMounted.current) setSaveStatus('idle');
@@ -116,15 +118,16 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
 
   // Effect to auto-save the note when debounced values change
   useEffect(() => {
-    // Only run auto-save after initial load and if it's not the first render
-    if (hasLoadedFromServer.current && isMounted.current) {
-      performSave();
+    // Only run auto-save after initial load to prevent saving empty state
+    if (hasLoadedFromServer.current) {
+      performSave(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedTitle, debouncedContent]);
   
   const handleManualSave = async () => {
-    await performSave(onSaveAndNew);
+    await performSave(true);
+    await onSaveAndNew();
   };
 
   const handleTogglePin = async () => {
