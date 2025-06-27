@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase/firebaseConfig';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useDebounce } from '@/hooks/useDebounce';
 
 type NoteEditorProps = {
   noteId: string;
@@ -32,34 +33,34 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
-  // We store the pristine data from the server to compare against
-  const [serverState, setServerState] = useState({ title: '', content: '' });
+  // Debounce user input to avoid saving on every keystroke
+  const debouncedTitle = useDebounce(title, 1000);
+  const debouncedContent = useDebounce(content, 1000);
 
-  // Ref to avoid running save effect on initial data load
-  const isMounted = useRef(false);
+  // Ref to track if this is the first time the component loads for a specific note
+  const isInitialLoadRef = useRef(true);
 
   // Load note data from Firestore
   useEffect(() => {
+    isInitialLoadRef.current = true; // Reset for new note
     setIsLoading(true);
-    isMounted.current = false; // Reset on note change
+    setSaveStatus('idle');
+
     const noteRef = doc(db, 'notes', noteId);
     const unsubscribe = onSnapshot(noteRef, (docSnapshot) => {
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
         
-        // Only update local state if the change is from the server, not a local echo
-        if (!docSnapshot.metadata.hasPendingWrites) {
-            setTitle(data.title || '');
-            setContent(data.content || '');
-            setServerState({ title: data.title || '', content: data.content || '' });
+        // Only set state on the very first load. This prevents overwriting
+        // the user's current input with data from the server (e.g., an echo of their own save).
+        if (isInitialLoadRef.current) {
+          setTitle(data.title || '');
+          setContent(data.content || '');
+          isInitialLoadRef.current = false;
         }
+        
         setPinned(data.pinned || false);
         setUpdatedAt(data.updatedAt?.toDate() || null);
-        
-        // Mark as mounted after the first data load completes
-        if (!isMounted.current) {
-            isMounted.current = true;
-        }
         setIsLoading(false);
       } else {
         console.error("Note not found!");
@@ -67,46 +68,36 @@ export default function NoteEditor({ noteId }: NoteEditorProps) {
       }
     });
 
-    return () => {
-        unsubscribe();
-    };
+    return () => unsubscribe();
   }, [noteId]);
 
-  // Debounced autosave logic
-  const debouncedSave = useCallback(() => {
-    const noteRef = doc(db, 'notes', noteId);
-    const currentTags = parseTags(content);
-    
+  // Effect to save the note when debounced values change
+  useEffect(() => {
+    // Do not save on the initial render cycle
+    if (isInitialLoadRef.current) {
+      return;
+    }
+
     setSaveStatus('saving');
+    const noteRef = doc(db, 'notes', noteId);
+    const currentTags = parseTags(debouncedContent);
 
     updateDoc(noteRef, {
-      title: title,
-      content: content,
+      title: debouncedTitle,
+      content: debouncedContent,
       tags: currentTags,
       updatedAt: serverTimestamp(),
     }).then(() => {
       setSaveStatus('saved');
+      // After showing "Salvo", revert to "idle" to show the timestamp again.
       setTimeout(() => setSaveStatus('idle'), 2000);
     }).catch(error => {
       console.error("Error updating note:", error);
-      setSaveStatus('idle');
+      setSaveStatus('idle'); // Revert on error too
     });
-  }, [noteId, title, content]);
 
-  useEffect(() => {
-    // Don't save on first render or if data hasn't changed
-    if (!isMounted.current || (title === serverState.title && content === serverState.content)) {
-      return;
-    }
-    
-    const handler = setTimeout(() => {
-        debouncedSave();
-    }, 1000); // 1 second debounce delay
-
-    return () => {
-        clearTimeout(handler);
-    };
-  }, [title, content, serverState, debouncedSave]);
+  // This effect runs only when the debounced values change, or the noteId changes.
+  }, [debouncedTitle, debouncedContent, noteId]);
   
   const handleTogglePin = async () => {
     const noteRef = doc(db, 'notes', noteId);
