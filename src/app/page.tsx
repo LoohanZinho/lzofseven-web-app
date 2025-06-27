@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { isToday, isYesterday } from 'date-fns';
 
 export type NoteSummary = {
   id: string;
@@ -160,6 +161,38 @@ export default function HomePage() {
       return searchMatch && tagMatch;
     });
   }, [notes, searchTerm, selectedTag]);
+
+  const groupedNotes = useMemo(() => {
+    const groups: { [key: string]: NoteSummary[] } = {
+      Hoje: [],
+      Ontem: [],
+      Anteriores: [],
+    };
+
+    filteredNotes.forEach(note => {
+      if (!note.updatedAt?.toDate) {
+        groups.Anteriores.push(note);
+        return;
+      }
+      const noteDate = note.updatedAt.toDate();
+      
+      if (isToday(noteDate)) {
+        groups.Hoje.push(note);
+      } else if (isYesterday(noteDate)) {
+        groups.Ontem.push(note);
+      } else {
+        groups.Anteriores.push(note);
+      }
+    });
+
+    Object.keys(groups).forEach((key) => {
+      if (groups[key].length === 0) {
+        delete groups[key];
+      }
+    });
+
+    return groups;
+  }, [filteredNotes]);
   
   useEffect(() => {
     if (activeNoteId && !filteredNotes.some(n => n.id === activeNoteId) && filteredNotes.length > 0) {
@@ -174,7 +207,7 @@ export default function HomePage() {
   const SidebarInnerContent = () => (
     <>
       <NotesList
-        notes={filteredNotes}
+        notes={groupedNotes}
         activeNoteId={activeNoteId}
         onSelectNote={(id) => {
           setActiveNoteId(id);
