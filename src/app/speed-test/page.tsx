@@ -54,10 +54,10 @@ export default function SpeedTestPage() {
     setDisplayValues({ ping: 0, jitter: 0, download: 0, upload: 0 });
 
     const final = {
-      ping: Math.floor(Math.random() * 50) + 5,
-      jitter: Math.floor(Math.random() * 10) + 1,
-      download: Math.floor(Math.random() * 450) + 50,
-      upload: Math.floor(Math.random() * 80) + 20,
+      ping: 16,
+      jitter: 7,
+      download: 262,
+      upload: 78,
     };
 
     // Simulate Ping & Jitter
