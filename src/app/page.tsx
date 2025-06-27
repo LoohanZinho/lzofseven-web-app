@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { auth, db } from '@/firebase/firebaseConfig';
 import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
+import { getRedirectResult } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 
 import Header from '@/components/Header';
@@ -27,10 +28,20 @@ export default function HomePage() {
   const [loadingNotes, setLoadingNotes] = useState(true);
 
   useEffect(() => {
+    // This observer is the single source of truth for the user's auth state.
+    // It fires when the component mounts and whenever the auth state changes.
     const unsubscribe = auth.onAuthStateChanged(firebaseUser => {
       setUser(firebaseUser);
-      setLoadingAuth(false);
+      setLoadingAuth(false); // Auth state is known, stop loading.
     });
+    
+    // We call this to process the result from a sign-in redirect.
+    // If the user just signed in, onAuthStateChanged will fire with the new user.
+    // If they are just visiting the page, it resolves to null.
+    getRedirectResult(auth).catch((error) => {
+        console.error("Error processing redirect result:", error);
+    });
+
     return () => unsubscribe();
   }, []);
 
