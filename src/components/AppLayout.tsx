@@ -19,19 +19,8 @@ import {
   LayoutDashboard,
   Gauge,
   Notebook,
-  LogOut,
-  ChevronDown,
+  Network,
 } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 const menuItems = [
   {
@@ -58,42 +47,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="flex w-full items-center justify-between p-2"
-              >
-                <div className="flex items-center gap-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src="https://placehold.co/100x100.png" alt="User Avatar" data-ai-hint="avatar person" />
-                    <AvatarFallback>U</AvatarFallback>
-                  </Avatar>
-                  <span className="font-medium text-sidebar-foreground">
-                    User
-                  </span>
-                </div>
-                <ChevronDown className="h-4 w-4 text-sidebar-foreground/50" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end" forceMount>
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">User</p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    user@example.com
-                  </p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Link href="/" className="flex items-center w-full">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Link
+            href="/dashboard"
+            className="flex h-10 items-center justify-center gap-2 font-semibold text-sidebar-foreground"
+          >
+            <Network className="h-6 w-6" />
+            <span className="group-data-[state=collapsed]:hidden">Net Tools</span>
+          </Link>
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
