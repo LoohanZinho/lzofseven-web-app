@@ -3,8 +3,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
-  title: 'Bloco de Notas em Tempo Real',
-  description: 'Um bloco de notas simples que salva automaticamente na nuvem.',
+  title: 'LZ Notepad',
+  description: 'Seu bloco de notas, simples e na nuvem.',
 };
 
 export default function RootLayout({
@@ -22,7 +22,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-body antialiased">
+      <body className="font-body antialiased bg-background text-foreground">
         {children}
         <Toaster />
       </body>

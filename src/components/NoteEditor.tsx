@@ -1,305 +1,101 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
+import React, { useState, useEffect, useRef } from 'react';
+import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/firebase/firebaseConfig';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
-import { Menu, Plus, Trash2, Save } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useDebounce } from '@/hooks/useDebounce';
 
-// Define the type for a single note
-type Note = {
-  id: string;
-  title: string;
-  content: string;
-  savedAt: string; // ISO string for easy storage and parsing
+type NoteEditorProps = {
+  noteId: string;
 };
 
-const LOCAL_STORAGE_KEY = 'notepad_notes_history';
-
-// Helper to generate the next title for untitled notes
-const getNextNoteTitle = (notes: Note[], currentId: string | null) => {
-  const notePattern = /^Nota (\d+)$/;
-  let maxNum = 0;
-  notes.forEach(note => {
-    if (note.id !== currentId) {
-      const match = note.title.match(notePattern);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNum) {
-          maxNum = num;
-        }
-      }
-    }
-  });
-  return `Nota ${maxNum + 1}`;
-};
-
-export default function NoteEditor() {
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+export default function NoteEditor({ noteId }: NoteEditorProps) {
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
-  const currentNote = notes.find(note => note.id === currentNoteId);
+  const debouncedTitle = useDebounce(title, 500);
+  const debouncedContent = useDebounce(content, 500);
 
-  // Debounce the editable fields of the note to trigger autosave
-  const debouncedTitle = useDebounce(currentNote?.title, 500);
-  const debouncedContent = useDebounce(currentNote?.content, 500);
+  // Ref to track if the initial load is done for debouncing
+  const isInitialLoadDone = useRef(false);
 
-  // This function is defined outside useEffect to be callable from multiple places
-  const handleNewNote = (setAsCurrent = true, initialNotes: Note[] = []) => {
-    const newNote: Note = {
-      id: crypto.randomUUID(),
-      title: '',
-      content: '',
-      savedAt: new Date().toISOString(),
-    };
-    const updatedNotes = [newNote, ...initialNotes];
-    setNotes(updatedNotes);
-    if (setAsCurrent) {
-        setCurrentNoteId(newNote.id);
-    }
-    setIsSheetOpen(false); // Close sheet after creating new note
-    return updatedNotes;
-  };
-
-  // Load notes from localStorage on initial render
+  // Firestore real-time listener
   useEffect(() => {
-    try {
-      const savedNotesRaw = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedNotesRaw) {
-        const savedNotes: Note[] = JSON.parse(savedNotesRaw);
-        if (savedNotes.length > 0) {
-          // Sort by date to find the most recent
-          const sortedNotes = savedNotes.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
-          setNotes(sortedNotes);
-          setCurrentNoteId(sortedNotes[0].id);
-        } else {
-            // if storage is empty, create a new note
-            handleNewNote(true);
+    setIsLoading(true);
+    isInitialLoadDone.current = false;
+    const noteRef = doc(db, 'notes', noteId);
+    const unsubscribe = onSnapshot(noteRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        if (!docSnapshot.metadata.hasPendingWrites) {
+          setTitle(docSnapshot.data().title || '');
+          setContent(docSnapshot.data().content || '');
         }
       } else {
-        // if no storage, create a new note
-        handleNewNote(true);
+        console.error("Note not found!");
       }
-    } catch (error) {
-      console.error("Error fetching notes from localStorage:", error);
-      // If error, start fresh
-      handleNewNote(true);
-    } finally {
-      setIsLoaded(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      setIsLoading(false);
+      setTimeout(() => { isInitialLoadDone.current = true; }, 500);
+    });
 
-  // Save notes to localStorage whenever the notes array changes
+    return () => unsubscribe();
+  }, [noteId]);
+
+  // Debounced autosave
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(notes));
-    }
-  }, [notes, isLoaded]);
+    if (!isInitialLoadDone.current) return;
 
-  // The function that performs the "save" by updating the timestamp (for AUTOSAVE)
-  const handleSaveNote = useCallback(() => {
-    if (!currentNoteId) return;
-
+    const noteRef = doc(db, 'notes', noteId);
     setSaveStatus('saving');
-    // Using a timeout to ensure the 'saving' message is visible for a moment
-    // as state updates can be very fast.
-    setTimeout(() => {
-      setNotes(currentNotes => {
-        const noteToUpdate = currentNotes.find(note => note.id === currentNoteId);
-        if (!noteToUpdate) return currentNotes;
-
-        let finalTitle = noteToUpdate.title;
-        // Assign a default title if the current one is empty but there is content
-        if (!finalTitle.trim() && noteToUpdate.content.trim()) {
-            finalTitle = getNextNoteTitle(currentNotes, currentNoteId);
-        }
-        
-        const updatedList = currentNotes.map(note =>
-          note.id === currentNoteId ? { ...note, title: finalTitle, savedAt: new Date().toISOString() } : note
-        );
-        
-        return updatedList.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
-      });
+    updateDoc(noteRef, {
+      title: debouncedTitle,
+      content: debouncedContent,
+      updatedAt: serverTimestamp(),
+    }).then(() => {
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
-    }, 300);
-  }, [currentNoteId]);
-  
-  // Saves the current note and creates a new blank one
-  const handleSaveAndCreateNew = useCallback(() => {
-    if (!currentNoteId) return;
-
-    setSaveStatus('saving');
-
-    setTimeout(() => {
-      const newNote: Note = {
-        id: crypto.randomUUID(),
-        title: '',
-        content: '',
-        savedAt: new Date().toISOString(),
-      };
-      
-      setNotes(currentNotes => {
-        const noteToSave = currentNotes.find(note => note.id === currentNoteId);
-        if (!noteToSave) return [newNote, ...currentNotes];
-
-        let finalTitle = noteToSave.title;
-        // Assign a default title if the user saves without one
-        if (!finalTitle.trim()) {
-            finalTitle = getNextNoteTitle(currentNotes, currentNoteId);
-        }
-        
-        const updatedNotes = currentNotes.map(note =>
-          note.id === currentNoteId ? { ...note, title: finalTitle, savedAt: new Date().toISOString() } : note
-        );
-        
-        return [newNote, ...updatedNotes].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
-      });
-      
-      setCurrentNoteId(newNote.id);
-      
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-    }, 300);
-  }, [currentNoteId]);
-
-  // Trigger autosave when debounced title or content changes
-  useEffect(() => {
-    if (isLoaded && currentNote) {
-      handleSaveNote();
-    }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedTitle, debouncedContent]);
 
-  const handleSelectNote = (id: string) => {
-    setCurrentNoteId(id);
-    setIsSheetOpen(false); // Close sheet after selection
-  };
-  
-  const handleDeleteNote = (idToDelete: string) => {
-      const remainingNotes = notes.filter(note => note.id !== idToDelete);
-      setNotes(remainingNotes);
-
-      // if the deleted note was the current one, select the next available one or create new
-      if(currentNoteId === idToDelete) {
-          if(remainingNotes.length > 0) {
-              setCurrentNoteId(remainingNotes[0].id);
-          } else {
-              handleNewNote(true, []);
-          }
-      }
-  };
-
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!currentNoteId) return;
-    setNotes(currentNotes =>
-      currentNotes.map(note =>
-        note.id === currentNoteId ? { ...note, title: e.target.value } : note
-      )
-    );
-  };
-
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (!currentNoteId) return;
-    setNotes(currentNotes =>
-      currentNotes.map(note =>
-        note.id === currentNoteId ? { ...note, content: e.target.value } : note
-      )
-    );
-  };
-
   const getStatusMessage = () => {
     if (saveStatus === 'saving') return 'Salvando...';
-    if (saveStatus === 'saved') return 'Salvo!';
-    if (currentNote?.savedAt) {
-      return `Último salvamento: ${new Date(currentNote.savedAt).toLocaleTimeString('pt-BR')}`;
-    }
+    if (saveStatus === 'saved') return 'Salvo ✅';
     return '';
   };
 
-  if (!isLoaded) {
+  if (isLoading) {
     return (
-      <div className="h-screen w-full p-2 md:p-4 space-y-4">
-        <div className="flex items-center gap-4">
-            <Skeleton className="h-10 w-10 rounded-md" />
-            <Skeleton className="h-10 w-1/3 rounded-md" />
-        </div>
-        <Skeleton className="h-[calc(100vh-80px)] w-full rounded-lg" />
+      <div className="p-4 md:p-8 space-y-4 h-full">
+        <Skeleton className="h-12 w-1/2" />
+        <Skeleton className="h-[calc(100%-100px)] w-full" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex flex-shrink-0 items-center gap-2 border-b p-2">
-        <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-          <SheetTrigger asChild>
-            <Button variant="outline" size="icon" aria-label="Histórico de notas">
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left">
-            <SheetHeader>
-              <SheetTitle>Histórico de Notas</SheetTitle>
-              <SheetDescription>
-                Aqui estão suas notas salvas. Clique para editar ou crie uma nova.
-              </SheetDescription>
-            </SheetHeader>
-            <div className="py-4">
-                <Button onClick={() => handleNewNote(true, notes)} className="w-full mb-4">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Nova Nota
-                </Button>
-                <div className="space-y-2">
-                {notes.map(note => (
-                  <div key={note.id} className="group flex items-center justify-between rounded-md p-2 hover:bg-accent" onClick={() => handleSelectNote(note.id)} style={{cursor: 'pointer'}}>
-                    <div className="truncate pr-2">
-                        <p className="font-medium">{note.title || 'Nota sem título'}</p>
-                        <p className="text-xs text-muted-foreground">
-                        {new Date(note.savedAt).toLocaleString('pt-BR')}
-                        </p>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id); }}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                        <span className="sr-only">Apagar nota</span>
-                    </Button>
-                  </div>
-                ))}
-                </div>
-            </div>
-          </SheetContent>
-        </Sheet>
-
+    <div className="flex h-full flex-col">
+      <div className="p-4 border-b border-border">
         <Input
-          value={currentNote?.title || ''}
-          onChange={handleTitleChange}
-          placeholder="Título (opcional)"
-          className="text-lg font-semibold border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Título da sua nota..."
+          className="text-2xl font-bold border-0 focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto bg-transparent"
           aria-label="Título da nota"
         />
-        
-        <Button onClick={handleSaveAndCreateNew} variant="outline" size="icon" aria-label="Salvar nota e criar uma nova">
-          <Save className="h-5 w-5" />
-        </Button>
-
-      </header>
-      
+      </div>
       <Textarea
-        value={currentNote?.content || ''}
-        onChange={handleContentChange}
-        placeholder="Comece a escrever..."
-        className="flex-grow resize-none border-0 bg-background p-4 text-lg focus-visible:ring-0 focus-visible:ring-offset-0 md:p-8"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        placeholder="Comece a escrever… tudo salva sozinho."
+        className="flex-grow resize-none border-0 bg-transparent p-4 text-base focus-visible:ring-0 focus-visible:ring-offset-0 md:p-8"
         aria-label="Editor de notas"
       />
-
-      <footer className="flex-shrink-0 border-t bg-background p-2 text-center text-xs text-muted-foreground">
+      <footer className="flex-shrink-0 border-t bg-background p-2 text-center text-xs text-muted-foreground h-8">
         {getStatusMessage()}
       </footer>
     </div>
