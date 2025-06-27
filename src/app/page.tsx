@@ -24,7 +24,7 @@ export default function HomePage() {
     try {
       await signInWithPopup(auth, provider);
     } catch (error) {
-      console.error("Error signing in with Google: ", error);
+      console.error("Erro ao fazer login com Google: ", error);
     }
   };
   
@@ -42,7 +42,7 @@ export default function HomePage() {
         <NoteEditor user={user} />
       ) : (
         <div className="flex h-screen flex-col items-center justify-center gap-4 p-4 text-center">
-          <h1 className="text-4xl font-bold tracking-tight">Bloco de Notas na Nuvem</h1>
+          <h1 className="text-4xl font-bold tracking-tight">Bloco de Notas em Tempo Real</h1>
           <p className="max-w-md text-muted-foreground">
             Acesse suas anotações de qualquer lugar. Faça login com sua conta Google para começar.
           </p>

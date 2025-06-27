@@ -1,189 +1,57 @@
 'use client';
 
-import AppLayout from '@/components/AppLayout';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { PlusCircle, Trash2, X, Notebook } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-
-type Note = {
-  id: number;
-  title: string;
-  content: string;
-  date: string;
-};
-
-const initialNotes: Note[] = [
-  {
-    id: 1,
-    title: 'Meeting Notes',
-    content: 'Discussed Q3 roadmap and new feature prioritization. Key takeaways: focus on user feedback and performance improvements.',
-    date: new Date(Date.now() - 86400000).toLocaleDateString(),
-  },
-  {
-    id: 2,
-    title: 'Project Ideas',
-    content: '1. A tool to check domain availability. 2. A password generator. 3. A JSON formatter.',
-    date: new Date(Date.now() - 2 * 86400000).toLocaleDateString(),
-  },
-];
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, User } from 'firebase/auth';
+import { auth } from '@/firebase/firebaseConfig';
+import { Button } from '@/components/ui/button';
+import NoteEditor from '@/components/NoteEditor';
+import { Loader2 } from 'lucide-react';
 
 export default function NotepadPage() {
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [isClient, setIsClient] = useState(false);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newNoteTitle, setNewNoteTitle] = useState('');
-  const [newNoteContent, setNewNoteContent] = useState('');
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setIsClient(true);
-    try {
-      const storedNotes = localStorage.getItem('notepad_notes');
-      if (storedNotes) {
-        setNotes(JSON.parse(storedNotes));
-      } else {
-        setNotes(initialNotes);
-      }
-    } catch (error) {
-      console.error("Could not load notes from local storage", error);
-      setNotes(initialNotes);
-    }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (isClient) {
-      localStorage.setItem('notepad_notes', JSON.stringify(notes));
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Erro ao fazer login com Google: ", error);
     }
-  }, [notes, isClient]);
-
-  const handleAddNote = () => {
-    if (!newNoteTitle.trim() || !newNoteContent.trim()) return;
-
-    const newNote: Note = {
-      id: Date.now(),
-      title: newNoteTitle,
-      content: newNoteContent,
-      date: new Date().toLocaleDateString(),
-    };
-    setNotes([newNote, ...notes]);
-    setNewNoteTitle('');
-    setNewNoteContent('');
-    setIsDialogOpen(false);
   };
-
-  const handleDeleteNote = (id: number) => {
-    setNotes(notes.filter((note) => note.id !== id));
-  };
-
-  if (!isClient) {
+  
+  if (loading) {
     return (
-      <AppLayout>
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <h1 className="text-3xl font-bold tracking-tight">Notepad</h1>
-              <p className="text-muted-foreground">
-                Create and manage your personal notes.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30 py-16 text-center">
-            <Notebook className="h-12 w-12 text-muted-foreground/50 mb-4 animate-pulse" />
-            <h3 className="text-xl font-semibold">Loading Notes...</h3>
-            <p className="text-muted-foreground">Please wait a moment.</p>
-          </div>
-        </div>
-      </AppLayout>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   return (
-    <AppLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold tracking-tight">Notepad</h1>
-            <p className="text-muted-foreground">
-              Create and manage your personal notes.
-            </p>
-          </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                New Note
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Create a new note</DialogTitle>
-                <DialogDescription>
-                  Add a title and content for your new note. Click save when you're done.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <Input
-                  id="title"
-                  placeholder="Note title"
-                  value={newNoteTitle}
-                  onChange={(e) => setNewNoteTitle(e.target.value)}
-                  className="col-span-3"
-                />
-                <Textarea
-                  id="content"
-                  placeholder="Type your note content here."
-                  value={newNoteContent}
-                  onChange={(e) => setNewNoteContent(e.target.value)}
-                  className="col-span-3 min-h-[120px]"
-                />
-              </div>
-              <DialogFooter>
-                <DialogClose asChild>
-                    <Button type="button" variant="secondary">Cancel</Button>
-                </DialogClose>
-                <Button type="submit" onClick={handleAddNote}>Save Note</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+    <main className="min-h-screen bg-background text-foreground">
+      {user ? (
+        <NoteEditor user={user} />
+      ) : (
+        <div className="flex h-screen flex-col items-center justify-center gap-4 p-4 text-center">
+          <h1 className="text-4xl font-bold tracking-tight">Bloco de Notas em Tempo Real</h1>
+          <p className="max-w-md text-muted-foreground">
+            Esta página agora é um espelho da página principal. Acesse suas anotações de qualquer lugar.
+          </p>
+          <Button onClick={handleLogin} size="lg" className="mt-4">
+            <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 23.4 172.9 61.9l-76.2 64.5C308.6 102.3 282.7 96 248 96c-106.1 0-192 85.9-192 192s85.9 192 192 192c60.8 0 111.7-25.6 146.1-65.6l-99.6-66.9H256v-96h232c1.7 10.4 2.5 21.1 2.5 31.8z"></path></svg>
+            Entrar com Google
+          </Button>
         </div>
-
-        {notes.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {notes.map((note) => (
-              <Card key={note.id} className="flex flex-col shadow-lg hover:shadow-primary/20 transition-shadow duration-300">
-                <CardHeader className="flex flex-row items-start justify-between">
-                  <CardTitle className="break-words">{note.title}</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 -mt-2 -mr-2"
-                    onClick={() => handleDeleteNote(note.id)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </CardHeader>
-                <CardContent className="flex-grow">
-                  <p className="text-sm text-muted-foreground line-clamp-4">
-                    {note.content}
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <p className="text-xs text-muted-foreground">{note.date}</p>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30 py-16 text-center">
-            <Notebook className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <h3 className="text-xl font-semibold">No notes yet</h3>
-            <p className="text-muted-foreground">Click "New Note" to get started.</p>
-          </div>
-        )}
-      </div>
-    </AppLayout>
+      )}
+    </main>
   );
 }
