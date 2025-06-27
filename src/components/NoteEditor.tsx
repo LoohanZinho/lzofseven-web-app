@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useToast } from '@/hooks/use-toast';
 
 type NoteEditorProps = {
   noteId: string;
@@ -35,6 +36,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
+  const { toast } = useToast();
   const debouncedTitle = useDebounce(title, 1500);
   const debouncedContent = useDebounce(content, 1500);
   
@@ -75,8 +77,8 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     };
   }, [noteId]);
   
-  const performSave = useCallback(async (isManualSave = false) => {
-    if (!hasLoadedFromServer.current) return;
+  const performSave = useCallback(async (isManualSave = false): Promise<string> => {
+    if (!hasLoadedFromServer.current) return '';
 
     setSaveStatus('saving');
     const noteRef = doc(db, 'notes', noteId);
@@ -102,16 +104,18 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     };
 
     try {
-      await updateDoc(noteRef, dataToSave);
+      await updateDoc(noteRef, { ...dataToSave });
       if (isMounted.current) {
         setSaveStatus('saved');
         setTimeout(() => {
           if (isMounted.current) setSaveStatus('idle');
         }, 2000);
       }
+      return dataToSave.title;
     } catch (error) {
       console.error("Error updating note:", error);
       if (isMounted.current) setSaveStatus('idle');
+      return '';
     }
   }, [noteId, title, content, allNotes]);
 
@@ -126,7 +130,11 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   }, [debouncedTitle, debouncedContent]);
   
   const handleManualSave = async () => {
-    await performSave(true);
+    const savedTitle = await performSave(true);
+    toast({
+      title: "Nota Salva!",
+      description: `A nota "${savedTitle || 'sem título'}" foi salva com sucesso.`,
+    });
     await onSaveAndNew();
   };
 
