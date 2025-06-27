@@ -3,23 +3,38 @@ import { auth } from '@/firebase/firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LogOut, NotebookPen } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { LogOut, NotebookPen, Search } from 'lucide-react';
 
 type HeaderProps = {
   user: User;
+  searchTerm: string;
+  setSearchTerm: (term: string) => void;
 };
 
-export default function Header({ user }: HeaderProps) {
+export default function Header({ user, searchTerm, setSearchTerm }: HeaderProps) {
   const handleLogout = () => {
     signOut(auth);
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4 gap-4">
       <div className="flex items-center gap-2">
         <NotebookPen className="h-6 w-6 text-primary" />
-        <h1 className="text-xl font-bold">LZ Notepad</h1>
+        <h1 className="text-xl font-bold hidden sm:block">LZ Notepad</h1>
       </div>
+      
+      <div className="relative flex-1 max-w-md">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Buscar notas..."
+          className="w-full rounded-lg bg-background pl-8"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <Avatar className="h-8 w-8">

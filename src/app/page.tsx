@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { auth, db } from '@/firebase/firebaseConfig';
 import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
@@ -9,6 +9,8 @@ import Header from '@/components/Header';
 import NotesList from '@/components/NotesList';
 import NoteEditor from '@/components/NoteEditor';
 import Login from '@/components/Login';
+import TagFilter from '@/components/TagFilter';
+import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 
@@ -16,6 +18,7 @@ export type NoteSummary = {
   id: string;
   title: string;
   pinned: boolean;
+  tags: string[];
 };
 
 export default function HomePage() {
@@ -26,14 +29,14 @@ export default function HomePage() {
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [loadingNotes, setLoadingNotes] = useState(true);
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
   useEffect(() => {
-    // This observer is the single source of truth for the user's auth state.
-    // It fires when the component mounts and whenever the auth state changes.
     const unsubscribe = auth.onAuthStateChanged(firebaseUser => {
       setUser(firebaseUser);
-      setLoadingAuth(false); // Auth state is known, stop loading.
+      setLoadingAuth(false);
     });
-
     return () => unsubscribe();
   }, []);
 
@@ -54,17 +57,19 @@ export default function HomePage() {
             id: doc.id, 
             title: data.title || 'Nota sem título',
             pinned: data.pinned || false,
-           });
+            tags: data.tags || [],
+          });
         });
         setNotes(notesData);
 
-        if (notesData.length > 0) {
-          if (!activeNoteId || !notesData.some(n => n.id === activeNoteId)) {
-             setActiveNoteId(notesData[0].id);
-          }
-        } else {
+        // If there's no active note, or the active note was deleted, select the first one.
+        if (notesData.length > 0 && (!activeNoteId || !notesData.some(n => n.id === activeNoteId))) {
+           setActiveNoteId(notesData[0].id);
+        } else if (notesData.length === 0) {
+            // If no notes exist, create one.
             handleNewNote(true);
         }
+
         setLoadingNotes(false);
       }, (error) => {
         console.error("Error fetching notes (check Firestore indexes): ", error);
@@ -72,6 +77,7 @@ export default function HomePage() {
       });
       return () => unsubscribe();
     } else {
+      // Clear data on logout
       setNotes([]);
       setActiveNoteId(null);
       setLoadingNotes(false);
@@ -97,18 +103,51 @@ export default function HomePage() {
   };
 
   const handleDeleteNote = async (noteId: string) => {
+    // If the active note is being deleted, select the next available note
     if (noteId === activeNoteId) {
-      const currentIndex = notes.findIndex(n => n.id === noteId);
-      if (notes.length > 1) {
-        const nextNote = notes[currentIndex > 0 ? currentIndex - 1 : 1];
+      const currentIndex = filteredNotes.findIndex(n => n.id === noteId);
+      if (filteredNotes.length > 1) {
+        const nextNote = filteredNotes[currentIndex > 0 ? currentIndex - 1 : 1];
         setActiveNoteId(nextNote.id);
       } else {
         setActiveNoteId(null);
+        handleNewNote(true); // Create a new note if the last one was deleted
       }
     }
     await deleteDoc(doc(db, 'notes', noteId));
   }
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    notes.forEach(note => {
+      note.tags.forEach(tag => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort();
+  }, [notes]);
+
+  const filteredNotes = useMemo(() => {
+    return notes.filter(note => {
+      const searchMatch = searchTerm.length > 0 
+        ? note.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+          note.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+        : true;
+      
+      const tagMatch = selectedTag 
+        ? note.tags.includes(selectedTag)
+        : true;
+
+      return searchMatch && tagMatch;
+    });
+  }, [notes, searchTerm, selectedTag]);
   
+  // When filters change, if the active note is no longer in the filtered list,
+  // select the first note from the new filtered list.
+  useEffect(() => {
+    if (activeNoteId && !filteredNotes.some(n => n.id === activeNoteId) && filteredNotes.length > 0) {
+      setActiveNoteId(filteredNotes[0].id);
+    }
+  }, [filteredNotes, activeNoteId]);
+
   if (loadingAuth) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -126,16 +165,22 @@ export default function HomePage() {
   
   return (
     <div className="flex h-screen w-full flex-col bg-background text-foreground">
-      <Header user={user} />
+      <Header user={user} searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
       <div className="flex flex-1 overflow-hidden">
         <aside className="hidden md:flex flex-col w-1/4 min-w-[250px] max-w-[350px] border-r border-border overflow-y-auto">
           <NotesList
-            notes={notes}
+            notes={filteredNotes}
             activeNoteId={activeNoteId}
             onSelectNote={setActiveNoteId}
             onNewNote={() => handleNewNote()}
             onDeleteNote={handleDeleteNote}
             loading={loadingNotes}
+          />
+          <Separator />
+          <TagFilter 
+            tags={allTags}
+            selectedTag={selectedTag}
+            onSelectTag={setSelectedTag}
           />
         </aside>
         <main className="flex-1 flex flex-col">
@@ -147,8 +192,10 @@ export default function HomePage() {
                  <Skeleton className="h-24 w-48" />
               ) : (
                 <>
-                  <h2 className="text-2xl font-semibold">Bem-vindo(a)!</h2>
-                  <p className="mt-2 text-muted-foreground">Crie uma nova nota para começar.</p>
+                  <h2 className="text-2xl font-semibold">Nenhuma nota encontrada</h2>
+                  <p className="mt-2 text-muted-foreground">
+                    {searchTerm || selectedTag ? "Tente limpar a busca ou o filtro de tag." : "Crie uma nova nota para começar."}
+                  </p>
                   <Button onClick={() => handleNewNote()} className="mt-6">Criar Nova Nota</Button>
                 </>
               )}

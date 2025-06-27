@@ -4,6 +4,7 @@ import { PlusCircle, Trash2, Star } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from './ui/scroll-area';
+import { Badge } from './ui/badge';
 
 type NotesListProps = {
   notes: NoteSummary[];
@@ -26,28 +27,41 @@ export default function NotesList({ notes, activeNoteId, onSelectNote, onNewNote
         <ScrollArea className="flex-1">
             <div className="space-y-1 p-2">
                 {loading && Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-10 w-full" />
+                    <Skeleton key={i} className="h-16 w-full" />
                 ))}
                 {!loading && notes.map(note => (
                 <div key={note.id} className="group relative">
                     <button
                         onClick={() => onSelectNote(note.id)}
                         className={cn(
-                            "w-full rounded-md p-2 text-left truncate hover:bg-accent text-sm font-medium flex items-center gap-2",
+                            "w-full rounded-md p-2 text-left hover:bg-accent flex flex-col items-start gap-1",
                             note.id === activeNoteId ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-transparent"
                         )}
                     >
-                        {note.pinned && <Star className="h-4 w-4 flex-shrink-0 text-yellow-400 fill-yellow-400" />}
-                        <span className="truncate">{note.title || "Nota sem título"}</span>
+                        <div className="w-full flex items-center gap-2">
+                          {note.pinned && <Star className="h-4 w-4 flex-shrink-0 text-yellow-400 fill-yellow-400" />}
+                          <span className="truncate text-sm font-medium">{note.title || "Nota sem título"}</span>
+                        </div>
+                        {note.tags && note.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {note.tags.slice(0, 3).map(tag => (
+                              <Badge key={tag} variant="secondary" className="text-xs">
+                                #{tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
                     </button>
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 opacity-0 group-hover:opacity-100"
+                      className="absolute right-1 top-1 h-7 w-7 opacity-0 group-hover:opacity-100"
                       onClick={(e) => {
                         e.stopPropagation();
                         onDeleteNote(note.id);
                       }}
+                      aria-label="Excluir nota"
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
                     </Button>
