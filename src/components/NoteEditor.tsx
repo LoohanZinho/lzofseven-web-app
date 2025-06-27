@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
-import { Menu, Plus, Trash2 } from 'lucide-react';
+import { Menu, Plus, Trash2, Save } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/hooks/useDebounce';
 
@@ -24,6 +24,7 @@ export default function NoteEditor() {
   const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const currentNote = notes.find(note => note.id === currentNoteId);
 
@@ -85,14 +86,22 @@ export default function NoteEditor() {
   }, [notes, isLoaded]);
 
   // The function that performs the "save" by updating the timestamp
-  const handleSaveNote = () => {
+  const handleSaveNote = useCallback(() => {
     if (!currentNoteId) return;
-    setNotes(currentNotes =>
+
+    setSaveStatus('saving');
+    // Using a timeout to ensure the 'saving' message is visible for a moment
+    // as state updates can be very fast.
+    setTimeout(() => {
+      setNotes(currentNotes =>
         currentNotes.map(note =>
-            note.id === currentNoteId ? { ...note, savedAt: new Date().toISOString() } : note
+          note.id === currentNoteId ? { ...note, savedAt: new Date().toISOString() } : note
         ).sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
-    );
-  };
+      );
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }, 300);
+  }, [currentNoteId]);
   
   // Trigger autosave when debounced title or content changes
   useEffect(() => {
@@ -139,6 +148,15 @@ export default function NoteEditor() {
     );
   };
 
+  const getStatusMessage = () => {
+    if (saveStatus === 'saving') return 'Salvando...';
+    if (saveStatus === 'saved') return 'Salvo!';
+    if (currentNote?.savedAt) {
+      return `Último salvamento: ${new Date(currentNote.savedAt).toLocaleTimeString('pt-BR')}`;
+    }
+    return '';
+  };
+
   if (!isLoaded) {
     return (
       <div className="h-screen w-full p-2 md:p-4 space-y-4">
@@ -153,7 +171,7 @@ export default function NoteEditor() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex flex-shrink-0 items-center gap-4 border-b p-2">
+      <header className="flex flex-shrink-0 items-center gap-2 border-b p-2">
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" size="icon" aria-label="Histórico de notas">
@@ -199,6 +217,10 @@ export default function NoteEditor() {
           className="text-lg font-semibold border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           aria-label="Título da nota"
         />
+        
+        <Button onClick={handleSaveNote} variant="outline" size="icon" aria-label="Salvar nota agora">
+          <Save className="h-5 w-5" />
+        </Button>
 
       </header>
       
@@ -209,6 +231,10 @@ export default function NoteEditor() {
         className="flex-grow resize-none border-0 bg-background p-4 text-lg focus-visible:ring-0 focus-visible:ring-offset-0 md:p-8"
         aria-label="Editor de notas"
       />
+
+      <footer className="flex-shrink-0 border-t bg-background p-2 text-center text-xs text-muted-foreground">
+        {getStatusMessage()}
+      </footer>
     </div>
   );
 }
