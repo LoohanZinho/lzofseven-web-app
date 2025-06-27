@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
-import { Menu, Save, Plus, Trash2 } from 'lucide-react';
+import { Menu, Plus, Trash2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useDebounce } from '@/hooks/useDebounce';
 
 // Define the type for a single note
 type Note = {
@@ -23,6 +24,12 @@ export default function NoteEditor() {
   const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+
+  const currentNote = notes.find(note => note.id === currentNoteId);
+
+  // Debounce the editable fields of the note to trigger autosave
+  const debouncedTitle = useDebounce(currentNote?.title, 500);
+  const debouncedContent = useDebounce(currentNote?.content, 500);
 
   // This function is defined outside useEffect to be callable from multiple places
   const handleNewNote = (setAsCurrent = true, initialNotes: Note[] = []) => {
@@ -77,15 +84,24 @@ export default function NoteEditor() {
     }
   }, [notes, isLoaded]);
 
+  // The function that performs the "save" by updating the timestamp
   const handleSaveNote = () => {
     if (!currentNoteId) return;
-    const notesSorted = notes.map(note =>
-        note.id === currentNoteId ? { ...note, savedAt: new Date().toISOString() } : note
-      ).sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
-    
-    setNotes(notesSorted);
+    setNotes(currentNotes =>
+        currentNotes.map(note =>
+            note.id === currentNoteId ? { ...note, savedAt: new Date().toISOString() } : note
+        ).sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
+    );
   };
   
+  // Trigger autosave when debounced title or content changes
+  useEffect(() => {
+    if (isLoaded && currentNote) {
+      handleSaveNote();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedTitle, debouncedContent]);
+
   const handleSelectNote = (id: string) => {
     setCurrentNoteId(id);
     setIsSheetOpen(false); // Close sheet after selection
@@ -107,8 +123,8 @@ export default function NoteEditor() {
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!currentNoteId) return;
-    setNotes(
-      notes.map(note =>
+    setNotes(currentNotes =>
+      currentNotes.map(note =>
         note.id === currentNoteId ? { ...note, title: e.target.value } : note
       )
     );
@@ -116,14 +132,12 @@ export default function NoteEditor() {
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (!currentNoteId) return;
-    setNotes(
-      notes.map(note =>
+    setNotes(currentNotes =>
+      currentNotes.map(note =>
         note.id === currentNoteId ? { ...note, content: e.target.value } : note
       )
     );
   };
-
-  const currentNote = notes.find(note => note.id === currentNoteId);
 
   if (!isLoaded) {
     return (
@@ -131,7 +145,6 @@ export default function NoteEditor() {
         <div className="flex items-center gap-4">
             <Skeleton className="h-10 w-10 rounded-md" />
             <Skeleton className="h-10 w-1/3 rounded-md" />
-            <Skeleton className="h-10 w-24 rounded-md ml-auto" />
         </div>
         <Skeleton className="h-[calc(100vh-80px)] w-full rounded-lg" />
       </div>
@@ -187,10 +200,6 @@ export default function NoteEditor() {
           aria-label="Título da nota"
         />
 
-        <Button onClick={handleSaveNote} className="ml-auto">
-          <Save className="mr-2 h-4 w-4" />
-          Salvar
-        </Button>
       </header>
       
       <Textarea
