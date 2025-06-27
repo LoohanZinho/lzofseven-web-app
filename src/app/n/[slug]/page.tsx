@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Frown } from 'lucide-react';
 import { format } from 'date-fns';
@@ -12,7 +12,7 @@ import { ptBR } from 'date-fns/locale';
 type PublicNote = {
   title: string;
   content: string;
-  updatedAt: string; // Changed from Timestamp
+  updatedAt: string;
 };
 
 export default function PublicNotePage() {
@@ -36,7 +36,7 @@ export default function PublicNotePage() {
 
         if (!response.ok) {
           if (response.status === 404) {
-            setError('Nota não encontrada.');
+            setError('Nota não encontrada ou não é pública.');
           } else if (response.status === 403) {
             setError('Esta nota é privada e não pode ser compartilhada.');
           } else {
@@ -62,32 +62,32 @@ export default function PublicNotePage() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen p-4 md:p-8">
-        <Card className="w-full max-w-3xl">
-          <CardHeader>
-            <Skeleton className="h-8 w-3/4 mb-2" />
-            <Skeleton className="h-4 w-1/2" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-5/6" />
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-3xl space-y-4">
+          <Skeleton className="h-10 w-3/4" />
+          <Skeleton className="h-6 w-1/2" />
+          <div className="space-y-3 pt-4">
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-4/6" />
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen text-center p-4">
-        <Frown className="w-16 h-16 text-destructive mb-4" />
-        <h1 className="text-3xl font-bold mb-2">Oops!</h1>
-        <p className="text-muted-foreground mb-6">{error}</p>
-        <Button onClick={() => router.push('/')}>
-          <ArrowLeft className="mr-2" />
-          Voltar para o início
-        </Button>
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 text-center">
+        <Card className="w-full max-w-md p-8 shadow-xl">
+            <Frown className="w-16 h-16 text-destructive mx-auto mb-4" />
+            <h1 className="text-3xl font-bold mb-2 text-foreground">Oops!</h1>
+            <p className="text-muted-foreground mb-6">{error}</p>
+            <Button onClick={() => router.push('/')} variant="default">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Voltar para o início
+            </Button>
+        </Card>
       </div>
     );
   }
@@ -97,24 +97,25 @@ export default function PublicNotePage() {
   }
 
   return (
-    <div className="flex justify-center items-start min-h-screen p-4 md:p-8 bg-muted/20">
-      <Card className="w-full max-w-3xl my-8">
-        <CardHeader>
-          <CardTitle className="text-4xl">{note.title || "Nota sem título"}</CardTitle>
-          <CardDescription>
+    <div className="min-h-screen bg-muted/20 flex items-center justify-center p-4">
+      <Card className="w-full max-w-3xl rounded-2xl shadow-xl p-8 my-8 space-y-6">
+        <header className="space-y-2">
+          <h1 className="text-4xl font-extrabold text-foreground break-words">{note.title || "Nota sem título"}</h1>
+          <time className="text-sm text-muted-foreground">
             Última atualização em{' '}
-            {format(new Date(note.updatedAt), "dd 'de' MMMM 'de' yyyy, HH:mm", { locale: ptBR })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="prose prose-invert max-w-none whitespace-pre-wrap">
-            {note.content}
-          </div>
-           <Button onClick={() => router.push('/')} className="mt-8">
-            <ArrowLeft className="mr-2" />
-            Criar sua própria nota
-          </Button>
-        </CardContent>
+            {format(new Date(note.updatedAt), "dd 'de' MMMM 'de' yyyy, 'às' HH:mm", { locale: ptBR })}
+          </time>
+        </header>
+
+        <article 
+          className="prose prose-invert max-w-none"
+          dangerouslySetInnerHTML={{ __html: note.content || '' }}
+        />
+
+        <Button onClick={() => router.push('/')} variant="default" className="mt-6">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Criar sua própria nota
+        </Button>
       </Card>
     </div>
   );
