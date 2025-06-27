@@ -4,15 +4,16 @@ import { signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
-import { LogOut, NotebookPen, Search } from 'lucide-react';
+import { LogOut, NotebookPen, Search, PanelLeft } from 'lucide-react';
 
 type HeaderProps = {
   user: User;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
+  onMenuClick: () => void;
 };
 
-export default function Header({ user, searchTerm, setSearchTerm }: HeaderProps) {
+export default function Header({ user, searchTerm, setSearchTerm, onMenuClick }: HeaderProps) {
   const handleLogout = () => {
     signOut(auth);
   };
@@ -20,6 +21,10 @@ export default function Header({ user, searchTerm, setSearchTerm }: HeaderProps)
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4 gap-4">
       <div className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={onMenuClick} className="md:hidden">
+          <PanelLeft className="h-5 w-5" />
+          <span className="sr-only">Abrir menu</span>
+        </Button>
         <NotebookPen className="h-6 w-6 text-primary" />
         <h1 className="text-xl font-bold hidden sm:block">LZ Notepad</h1>
       </div>

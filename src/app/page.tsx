@@ -13,6 +13,7 @@ import TagFilter from '@/components/TagFilter';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 
 export type NoteSummary = {
   id: string;
@@ -31,6 +32,7 @@ export default function HomePage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(firebaseUser => {
@@ -62,11 +64,9 @@ export default function HomePage() {
         });
         setNotes(notesData);
 
-        // If there's no active note, or the active note was deleted, select the first one.
         if (notesData.length > 0 && (!activeNoteId || !notesData.some(n => n.id === activeNoteId))) {
            setActiveNoteId(notesData[0].id);
         } else if (notesData.length === 0) {
-            // If no notes exist, create one.
             handleNewNote(true);
         }
 
@@ -77,7 +77,6 @@ export default function HomePage() {
       });
       return () => unsubscribe();
     } else {
-      // Clear data on logout
       setNotes([]);
       setActiveNoteId(null);
       setLoadingNotes(false);
@@ -103,7 +102,6 @@ export default function HomePage() {
   };
 
   const handleDeleteNote = async (noteId: string) => {
-    // If the active note is being deleted, select the next available note
     if (noteId === activeNoteId) {
       const currentIndex = filteredNotes.findIndex(n => n.id === noteId);
       if (filteredNotes.length > 1) {
@@ -111,7 +109,7 @@ export default function HomePage() {
         setActiveNoteId(nextNote.id);
       } else {
         setActiveNoteId(null);
-        handleNewNote(true); // Create a new note if the last one was deleted
+        handleNewNote(true);
       }
     }
     await deleteDoc(doc(db, 'notes', noteId));
@@ -140,13 +138,33 @@ export default function HomePage() {
     });
   }, [notes, searchTerm, selectedTag]);
   
-  // When filters change, if the active note is no longer in the filtered list,
-  // select the first note from the new filtered list.
   useEffect(() => {
     if (activeNoteId && !filteredNotes.some(n => n.id === activeNoteId) && filteredNotes.length > 0) {
       setActiveNoteId(filteredNotes[0].id);
     }
   }, [filteredNotes, activeNoteId]);
+
+  const SidebarInnerContent = () => (
+    <>
+      <NotesList
+        notes={filteredNotes}
+        activeNoteId={activeNoteId}
+        onSelectNote={(id) => {
+          setActiveNoteId(id);
+          setIsSidebarOpen(false); // Close sidebar on selection
+        }}
+        onNewNote={() => handleNewNote()}
+        onDeleteNote={handleDeleteNote}
+        loading={loadingNotes}
+      />
+      <Separator />
+      <TagFilter 
+        tags={allTags}
+        selectedTag={selectedTag}
+        onSelectTag={setSelectedTag}
+      />
+    </>
+  );
 
   if (loadingAuth) {
     return (
@@ -165,23 +183,22 @@ export default function HomePage() {
   
   return (
     <div className="flex h-screen w-full flex-col bg-background text-foreground">
-      <Header user={user} searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
+      <Header 
+        user={user} 
+        searchTerm={searchTerm} 
+        setSearchTerm={setSearchTerm}
+        onMenuClick={() => setIsSidebarOpen(true)}
+      />
       <div className="flex flex-1 overflow-hidden">
+        <div className="md:hidden">
+          <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+            <SheetContent side="left" className="p-0 w-[300px]">
+              <SidebarInnerContent />
+            </SheetContent>
+          </Sheet>
+        </div>
         <aside className="hidden md:flex flex-col w-1/4 min-w-[250px] max-w-[350px] border-r border-border overflow-y-auto">
-          <NotesList
-            notes={filteredNotes}
-            activeNoteId={activeNoteId}
-            onSelectNote={setActiveNoteId}
-            onNewNote={() => handleNewNote()}
-            onDeleteNote={handleDeleteNote}
-            loading={loadingNotes}
-          />
-          <Separator />
-          <TagFilter 
-            tags={allTags}
-            selectedTag={selectedTag}
-            onSelectTag={setSelectedTag}
-          />
+          <SidebarInnerContent />
         </aside>
         <main className="flex-1 flex flex-col">
           {activeNoteId ? (
