@@ -23,6 +23,7 @@ export default function PublicNotePage() {
   const [note, setNote] = useState<PublicNote | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [formattedDate, setFormattedDate] = useState<string>('');
 
   useEffect(() => {
     if (!slug) return;
@@ -59,6 +60,14 @@ export default function PublicNotePage() {
 
     fetchNote();
   }, [slug]);
+
+  useEffect(() => {
+    if (note?.updatedAt) {
+      setFormattedDate(
+        format(new Date(note.updatedAt), "dd 'de' MMMM 'de' yyyy, 'às' HH:mm", { locale: ptBR })
+      );
+    }
+  }, [note]);
 
   if (isLoading) {
     return (
@@ -101,9 +110,13 @@ export default function PublicNotePage() {
       <Card className="w-full max-w-3xl rounded-2xl shadow-xl p-8 my-8 space-y-6">
         <header className="space-y-2">
           <h1 className="text-4xl font-extrabold text-foreground break-words">{note.title || "Nota sem título"}</h1>
-          <time className="text-sm text-muted-foreground">
-            Última atualização em{' '}
-            {format(new Date(note.updatedAt), "dd 'de' MMMM 'de' yyyy, 'às' HH:mm", { locale: ptBR })}
+          <time className="text-sm text-muted-foreground h-5">
+            {formattedDate && (
+              <>
+                Última atualização em{' '}
+                {formattedDate}
+              </>
+            )}
           </time>
         </header>
 

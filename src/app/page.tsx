@@ -36,6 +36,7 @@ export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [groupedNotes, setGroupedNotes] = useState<{ [key: string]: NoteSummary[] }>({});
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(firebaseUser => {
@@ -120,6 +121,21 @@ export default function HomePage() {
     }
   };
 
+  const filteredNotes = useMemo(() => {
+    return notes.filter(note => {
+      const searchMatch = searchTerm.length > 0 
+        ? note.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+          note.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+        : true;
+      
+      const tagMatch = selectedTag 
+        ? note.tags.includes(selectedTag)
+        : true;
+
+      return searchMatch && tagMatch;
+    });
+  }, [notes, searchTerm, selectedTag]);
+
   const handleDeleteNote = async (noteId: string) => {
     const noteToDeleteIndex = filteredNotes.findIndex(n => n.id === noteId);
     
@@ -147,22 +163,7 @@ export default function HomePage() {
     return Array.from(tagSet).sort();
   }, [notes]);
 
-  const filteredNotes = useMemo(() => {
-    return notes.filter(note => {
-      const searchMatch = searchTerm.length > 0 
-        ? note.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-          note.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-        : true;
-      
-      const tagMatch = selectedTag 
-        ? note.tags.includes(selectedTag)
-        : true;
-
-      return searchMatch && tagMatch;
-    });
-  }, [notes, searchTerm, selectedTag]);
-
-  const groupedNotes = useMemo(() => {
+  useEffect(() => {
     const groups: { [key: string]: NoteSummary[] } = {
       Hoje: [],
       Ontem: [],
@@ -191,7 +192,7 @@ export default function HomePage() {
       }
     });
 
-    return groups;
+    setGroupedNotes(groups);
   }, [filteredNotes]);
   
   useEffect(() => {
