@@ -26,7 +26,7 @@ export default function Header({ user, searchTerm, setSearchTerm, onMenuClick }:
           <span className="sr-only">Abrir menu</span>
         </Button>
         <NotebookPen className="h-6 w-6 text-primary" />
-        <h1 className="text-xl font-bold hidden sm:block">LZ Notepad</h1>
+        <h1 className="text-xl font-bold hidden sm:block">Notepad</h1>
       </div>
       
       <div className="relative flex-1 max-w-md">

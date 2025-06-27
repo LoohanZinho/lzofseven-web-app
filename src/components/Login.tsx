@@ -23,7 +23,7 @@ export default function Login() {
   return (
     <main className="flex h-screen w-full flex-col items-center justify-center bg-background p-4 text-center">
       <div className="space-y-6">
-        <h1 className="text-5xl font-bold tracking-tighter">LZ Notepad</h1>
+        <h1 className="text-5xl font-bold tracking-tighter">Notepad</h1>
         <p className="text-lg text-muted-foreground">Seu bloco de notas, simples e na nuvem.</p>
         <Button onClick={handleLogin} size="lg" disabled={isLoggingIn}>
            {isLoggingIn ? (

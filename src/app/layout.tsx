@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
-  title: 'LZ Notepad',
+  title: 'Notepad',
   description: 'Seu bloco de notas, simples e na nuvem.',
 };
 
