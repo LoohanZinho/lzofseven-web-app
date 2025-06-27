@@ -249,6 +249,11 @@ export default function HomePage() {
         searchTerm={searchTerm} 
         setSearchTerm={setSearchTerm}
         onMenuClick={() => setIsSidebarOpen(true)}
+        notes={notes}
+        onNoteSelect={(noteId) => {
+          setActiveNoteId(noteId);
+          setSearchTerm('');
+        }}
       />
       <div className="flex flex-1 overflow-hidden">
         <div className="md:hidden">
