@@ -131,8 +131,10 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   useEffect(() => {
     if (editor && !editor.isDestroyed && hasLoadedFromServer.current) {
       const { from, to } = editor.state.selection;
-      editor.commands.setContent(content, false, { preserveWhitespace: "full" });
-      editor.commands.setTextSelection({ from, to });
+      if (editor.getHTML() !== content) {
+          editor.commands.setContent(content, false, { preserveWhitespace: "full" });
+          editor.commands.setTextSelection({ from, to });
+      }
     }
   }, [content, editor]);
 
@@ -156,12 +158,31 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
             setTitle(data.title || '');
 
             if (noteIsPrivate) {
-                newContent = '';
-                setEncryptedDbContent(data.encryptedContent || '');
-                setIsLocked(true);
-                sessionPassword.current = '';
-                setPromptAction('unlock');
-                setShowPasswordPrompt(true);
+                const dbEncrypted = data.encryptedContent || '';
+                setEncryptedDbContent(dbEncrypted);
+
+                if (sessionPassword.current) {
+                    try {
+                        const bytes = CryptoJS.AES.decrypt(dbEncrypted, sessionPassword.current);
+                        newContent = bytes.toString(CryptoJS.enc.Utf8);
+                        if (!newContent && dbEncrypted) { 
+                            throw new Error("Decryption resulted in empty content, likely wrong password.");
+                        }
+                        setIsLocked(false);
+                    } catch (error) {
+                        console.error("Failed to decrypt with session password, re-locking.", error);
+                        newContent = '';
+                        setIsLocked(true);
+                        setPromptAction('unlock');
+                        setShowPasswordPrompt(true);
+                        sessionPassword.current = '';
+                    }
+                } else {
+                    newContent = '';
+                    setIsLocked(true);
+                    setPromptAction('unlock');
+                    setShowPasswordPrompt(true);
+                }
             } else {
                 newContent = data.content || '';
                 setIsLocked(false);
