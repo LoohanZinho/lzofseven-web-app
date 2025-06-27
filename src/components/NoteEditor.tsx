@@ -6,7 +6,6 @@ import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/firebase/firebaseConfig';
 import CryptoJS from 'crypto-js';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Pin, Save, Lock, Share2, Copy, XCircle } from 'lucide-react';
@@ -33,15 +32,23 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+import Image from '@tiptap/extension-image';
+import TiptapToolbar from './TiptapToolbar';
+
+
 type NoteEditorProps = {
   noteId: string;
   allNotes: NoteSummary[];
   onSaveAndNew: () => Promise<void>;
 };
 
-const parseTags = (content: string): string[] => {
+const parseTags = (htmlContent: string): string[] => {
+  const textContent = htmlContent.replace(/<[^>]*>?/gm, ' ');
   const tagRegex = /#([\p{L}\p{N}_]+)/gu;
-  const matches = content.match(tagRegex);
+  const matches = textContent.match(tagRegex);
   if (!matches) return [];
   return [...new Set(matches.map(tag => tag.substring(1)))];
 };
@@ -88,6 +95,29 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const lastSavedState = useRef({ title: '', content: '', isPrivate: false, publicSlug: null });
   const justSavedTimeout = useRef<NodeJS.Timeout | null>(null);
 
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: {
+          levels: [1, 2, 3],
+        },
+      }),
+      Underline,
+      Image.configure({
+        inline: false,
+      }),
+    ],
+    content: content,
+    onUpdate: ({ editor }) => {
+      setContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: 'prose-sm sm:prose lg:prose-lg xl:prose-2xl m-5 focus:outline-none',
+      },
+    },
+  });
+
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -97,6 +127,14 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (editor && !editor.isDestroyed && hasLoadedFromServer.current) {
+      const { from, to } = editor.state.selection;
+      editor.commands.setContent(content, false, { preserveWhitespace: "full" });
+      editor.commands.setTextSelection({ from, to });
+    }
+  }, [content, editor]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -112,27 +150,28 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
         const noteIsPrivate = data.isPrivate || false;
         setIsPrivate(noteIsPrivate);
         setPublicSlug(data.publicSlug || null);
+        let newContent = '';
 
         if (!docSnapshot.metadata.hasPendingWrites || !hasLoadedFromServer.current) {
             setTitle(data.title || '');
 
             if (noteIsPrivate) {
-                setContent('');
+                newContent = '';
                 setEncryptedDbContent(data.encryptedContent || '');
                 setIsLocked(true);
                 sessionPassword.current = '';
                 setPromptAction('unlock');
                 setShowPasswordPrompt(true);
             } else {
-                const newContent = data.content || '';
-                setContent(newContent);
+                newContent = data.content || '';
                 setIsLocked(false);
                 setEncryptedDbContent('');
                 sessionPassword.current = '';
             }
+            setContent(newContent);
             lastSavedState.current = { 
               title: data.title || '', 
-              content: data.content || '', 
+              content: newContent, 
               isPrivate: noteIsPrivate,
               publicSlug: data.publicSlug || null
             };
@@ -152,7 +191,8 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const performSave = useCallback(async (isManualSave = false): Promise<string> => {
     if (!hasLoadedFromServer.current) return '';
     
-    const hasChanged = title !== lastSavedState.current.title || content !== lastSavedState.current.content || isPrivate !== lastSavedState.current.isPrivate;
+    const currentContent = editor?.getHTML() || content;
+    const hasChanged = title !== lastSavedState.current.title || currentContent !== lastSavedState.current.content || isPrivate !== lastSavedState.current.isPrivate;
     if (!isManualSave && !hasChanged) {
       return title; 
     }
@@ -164,7 +204,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     const noteRef = doc(db, 'notes', noteId);
     
     let finalTitle = title.trim();
-    if (finalTitle === '' && (content.trim() || isManualSave)) {
+    if (finalTitle === '' && (currentContent.replace(/<[^>]*>?/gm, '').trim() || isManualSave)) {
         const untitledNotes = allNotes.filter(n => n.id !== noteId && n.title.startsWith('Nota sem título'));
         const existingNumbers = untitledNotes.map(n => {
             const numPart = n.title.replace('Nota sem título', '').trim();
@@ -176,7 +216,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
 
     const dataToSave: { [key: string]: any } = {
       title: finalTitle,
-      tags: parseTags(content),
+      tags: parseTags(currentContent),
       updatedAt: serverTimestamp(),
       isPrivate: isPrivate,
     };
@@ -186,17 +226,17 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
             console.warn("Attempted to save private note without a password. Save aborted.");
             return title;
         }
-        const encrypted = CryptoJS.AES.encrypt(content, sessionPassword.current).toString();
+        const encrypted = CryptoJS.AES.encrypt(currentContent, sessionPassword.current).toString();
         dataToSave.encryptedContent = encrypted;
         dataToSave.content = '';
     } else {
-        dataToSave.content = content;
+        dataToSave.content = currentContent;
         dataToSave.encryptedContent = '';
     }
 
     try {
       await updateDoc(noteRef, { ...dataToSave });
-      lastSavedState.current = { title: dataToSave.title, content: content, isPrivate: isPrivate, publicSlug: publicSlug };
+      lastSavedState.current = { title: dataToSave.title, content: currentContent, isPrivate: isPrivate, publicSlug: publicSlug };
       if (isPrivate) {
         setEncryptedDbContent(dataToSave.encryptedContent);
       }
@@ -216,7 +256,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
       }
       return '';
     }
-  }, [noteId, title, content, isPrivate, allNotes, publicSlug]);
+  }, [noteId, title, content, isPrivate, allNotes, publicSlug, editor]);
 
   useEffect(() => {
     const hasChanged = title !== lastSavedState.current.title || content !== lastSavedState.current.content || isPrivate !== lastSavedState.current.isPrivate;
@@ -359,7 +399,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     </AlertDialog>
   );
 
-  if (isLoading) {
+  if (isLoading || !editor) {
     return (
       <div className="p-4 md:p-8 space-y-4 h-full">
         <Skeleton className="h-12 w-1/2" />
@@ -435,22 +475,23 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
         </Popover>
         </div>
       </div>
-      {isLocked && isPrivate ? (
-         <div className="flex flex-col items-center justify-center flex-grow p-8 text-center bg-muted/20">
-            <Lock className="w-16 h-16 text-muted-foreground mb-4" />
-            <h2 className="text-2xl font-bold">Nota Bloqueada</h2>
-            <p className="text-muted-foreground mt-2">Esta nota está criptografada.</p>
-            <Button className="mt-6" onClick={() => { setPromptAction('unlock'); setShowPasswordPrompt(true); }}>Desbloquear Nota</Button>
-        </div>
-      ) : (
-        <Textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Comece a escrever… tudo salva sozinho. Use #tags para organizar."
-          className="flex-grow resize-none border-0 bg-transparent p-4 text-base focus-visible:ring-0 focus-visible:ring-offset-0 md:p-8"
-          aria-label="Editor de notas"
-        />
-      )}
+
+      <div className="flex-1 flex flex-col">
+        {isLocked && isPrivate ? (
+          <div className="flex flex-col items-center justify-center flex-grow p-8 text-center bg-muted/20">
+              <Lock className="w-16 h-16 text-muted-foreground mb-4" />
+              <h2 className="text-2xl font-bold">Nota Bloqueada</h2>
+              <p className="text-muted-foreground mt-2">Esta nota está criptografada.</p>
+              <Button className="mt-6" onClick={() => { setPromptAction('unlock'); setShowPasswordPrompt(true); }}>Desbloquear Nota</Button>
+          </div>
+        ) : (
+          <>
+            <TiptapToolbar editor={editor} />
+            <EditorContent editor={editor} className="flex-grow p-4 overflow-y-auto" />
+          </>
+        )}
+      </div>
+
       <footer className="h-8 flex-shrink-0 border-t bg-background p-2 text-center text-xs text-muted-foreground">
         {isLocked && isPrivate ? "Nota está bloqueada 🔒" : getStatusMessage()}
       </footer>
