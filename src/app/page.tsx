@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 export type NoteSummary = {
   id: string;
   title: string;
+  pinned: boolean;
 };
 
 export default function HomePage() {
@@ -39,13 +40,18 @@ export default function HomePage() {
       const q = query(
         collection(db, 'notes'),
         where('ownerId', '==', user.uid),
+        orderBy('pinned', 'desc'),
         orderBy('updatedAt', 'desc')
       );
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const notesData: NoteSummary[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          notesData.push({ id: doc.id, title: data.title || 'Nota sem título' });
+          notesData.push({ 
+            id: doc.id, 
+            title: data.title || 'Nota sem título',
+            pinned: data.pinned || false,
+           });
         });
         setNotes(notesData);
 
@@ -54,9 +60,11 @@ export default function HomePage() {
              setActiveNoteId(notesData[0].id);
           }
         } else {
-            // If no notes exist, create one automatically
             handleNewNote(true);
         }
+        setLoadingNotes(false);
+      }, (error) => {
+        console.error("Error fetching notes (check Firestore indexes): ", error);
         setLoadingNotes(false);
       });
       return () => unsubscribe();
@@ -76,7 +84,6 @@ export default function HomePage() {
         ownerId: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        isPrivate: false,
         pinned: false,
         tags: []
       });

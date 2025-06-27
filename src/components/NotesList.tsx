@@ -1,6 +1,6 @@
 import type { NoteSummary } from '@/app/page';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Trash2 } from 'lucide-react';
+import { PlusCircle, Trash2, Star } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from './ui/scroll-area';
@@ -33,11 +33,12 @@ export default function NotesList({ notes, activeNoteId, onSelectNote, onNewNote
                     <button
                         onClick={() => onSelectNote(note.id)}
                         className={cn(
-                            "w-full rounded-md p-2 text-left truncate hover:bg-accent text-sm font-medium",
+                            "w-full rounded-md p-2 text-left truncate hover:bg-accent text-sm font-medium flex items-center gap-2",
                             note.id === activeNoteId ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-transparent"
                         )}
                     >
-                        {note.title || "Nota sem título"}
+                        {note.pinned && <Star className="h-4 w-4 flex-shrink-0 text-yellow-400 fill-yellow-400" />}
+                        <span className="truncate">{note.title || "Nota sem título"}</span>
                     </button>
                     <Button 
                       variant="ghost" 
