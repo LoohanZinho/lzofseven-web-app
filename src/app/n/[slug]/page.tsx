@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, limit, Timestamp } from 'firebase/firestore';
-import { db } from '@/firebase/firebaseConfig';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,7 +12,7 @@ import { ptBR } from 'date-fns/locale';
 type PublicNote = {
   title: string;
   content: string;
-  updatedAt: Timestamp;
+  updatedAt: string; // Changed from Timestamp
 };
 
 export default function PublicNotePage() {
@@ -32,33 +30,25 @@ export default function PublicNotePage() {
     const fetchNote = async () => {
       try {
         setIsLoading(true);
-        const q = query(
-          collection(db, 'notes'),
-          where('publicSlug', '==', slug),
-          limit(1)
-        );
-        const querySnapshot = await getDocs(q);
+        setError(null);
+        
+        const response = await fetch(`/api/notes/public/${slug}`);
 
-        if (querySnapshot.empty) {
-          setError('Nota não encontrada.');
+        if (!response.ok) {
+          if (response.status === 404) {
+            setError('Nota não encontrada.');
+          } else if (response.status === 403) {
+            setError('Esta nota é privada e não pode ser compartilhada.');
+          } else {
+            const errorData = await response.json();
+            setError(errorData.error || 'Ocorreu um erro ao carregar a nota.');
+          }
           setIsLoading(false);
           return;
         }
 
-        const noteDoc = querySnapshot.docs[0];
-        const noteData = noteDoc.data();
-
-        if (noteData.isPrivate) {
-          setError('Esta nota é privada e não pode ser compartilhada.');
-          setIsLoading(false);
-          return;
-        }
-
-        setNote({
-          title: noteData.title,
-          content: noteData.content,
-          updatedAt: noteData.updatedAt,
-        });
+        const noteData: PublicNote = await response.json();
+        setNote(noteData);
       } catch (err) {
         console.error("Error fetching public note:", err);
         setError('Ocorreu um erro ao carregar a nota.');
@@ -113,7 +103,7 @@ export default function PublicNotePage() {
           <CardTitle className="text-4xl">{note.title || "Nota sem título"}</CardTitle>
           <CardDescription>
             Última atualização em{' '}
-            {format(note.updatedAt.toDate(), "dd 'de' MMMM 'de' yyyy, HH:mm", { locale: ptBR })}
+            {format(new Date(note.updatedAt), "dd 'de' MMMM 'de' yyyy, HH:mm", { locale: ptBR })}
           </CardDescription>
         </CardHeader>
         <CardContent>
