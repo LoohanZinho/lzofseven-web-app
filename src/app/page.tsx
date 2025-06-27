@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { auth, db } from '@/firebase/firebaseConfig';
-import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 
 import Header from '@/components/Header';
@@ -21,6 +21,7 @@ export type NoteSummary = {
   pinned: boolean;
   tags: string[];
   isPrivate: boolean;
+  updatedAt: Timestamp | null;
 };
 
 export default function HomePage() {
@@ -46,11 +47,10 @@ export default function HomePage() {
   useEffect(() => {
     if (user) {
       setLoadingNotes(true);
+      // Simplified query to avoid composite index requirement
       const q = query(
         collection(db, 'notes'),
-        where('ownerId', '==', user.uid),
-        orderBy('pinned', 'desc'),
-        orderBy('updatedAt', 'desc')
+        where('ownerId', '==', user.uid)
       );
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const notesData: NoteSummary[] = [];
@@ -62,8 +62,22 @@ export default function HomePage() {
             pinned: data.pinned || false,
             tags: data.tags || [],
             isPrivate: data.isPrivate || false,
+            updatedAt: data.updatedAt,
           });
         });
+        
+        // Perform sorting on the client-side
+        notesData.sort((a, b) => {
+          // Pinned notes first (descending)
+          if (a.pinned && !b.pinned) return -1;
+          if (!a.pinned && b.pinned) return 1;
+
+          // For notes with same pinned status, sort by date (descending)
+          const dateA = a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(0);
+          const dateB = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(0);
+          return dateB.getTime() - dateA.getTime();
+        });
+
         setNotes(notesData);
 
         if (notesData.length > 0 && !activeNoteId) {
@@ -74,7 +88,7 @@ export default function HomePage() {
 
         setLoadingNotes(false);
       }, (error) => {
-        console.error("Error fetching notes (check Firestore indexes): ", error);
+        console.error("Error fetching notes: ", error);
         setLoadingNotes(false);
       });
       return () => unsubscribe();
