@@ -34,31 +34,43 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const [pinned, setPinned] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [isSaving, setIsSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
 
   const { toast } = useToast();
   const debouncedTitle = useDebounce(title, 1500);
   const debouncedContent = useDebounce(content, 1500);
-  
+
   const isMounted = useRef(true);
   const hasLoadedFromServer = useRef(false);
+  const lastSavedState = useRef({ title: '', content: '' });
+  const justSavedTimeout = useRef<NodeJS.Timeout | null>(null);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      if (justSavedTimeout.current) {
+        clearTimeout(justSavedTimeout.current);
+      }
+    };
+  }, []);
 
   // Load note data from Firestore
   useEffect(() => {
     setIsLoading(true);
     hasLoadedFromServer.current = false;
-    isMounted.current = true;
     
     const noteRef = doc(db, 'notes', noteId);
     const unsubscribe = onSnapshot(noteRef, (docSnapshot) => {
       if (docSnapshot.exists() && isMounted.current) {
         const data = docSnapshot.data();
         
-        // This check prevents overwriting user's real-time input with
-        // a slightly delayed echo from the database.
         if (!docSnapshot.metadata.hasPendingWrites) {
           setTitle(data.title || '');
           setContent(data.content || '');
+          lastSavedState.current = { title: data.title || '', content: data.content || '' };
         }
         
         setPinned(data.pinned || false);
@@ -72,15 +84,22 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     });
 
     return () => {
-      isMounted.current = false;
       unsubscribe();
     };
   }, [noteId]);
   
   const performSave = useCallback(async (isManualSave = false): Promise<string> => {
     if (!hasLoadedFromServer.current) return '';
+    
+    const hasChanged = title !== lastSavedState.current.title || content !== lastSavedState.current.content;
+    if (!isManualSave && !hasChanged) {
+      return title; 
+    }
 
-    setSaveStatus('saving');
+    if (justSavedTimeout.current) clearTimeout(justSavedTimeout.current);
+    setIsSaving(true);
+    setJustSaved(false);
+
     const noteRef = doc(db, 'notes', noteId);
     
     let finalTitle = title.trim();
@@ -88,9 +107,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
         const untitledNotes = allNotes.filter(n => n.id !== noteId && n.title.startsWith('Nota sem título'));
         const existingNumbers = untitledNotes.map(n => {
             const numPart = n.title.replace('Nota sem título', '').trim();
-            if (numPart === '') return 1;
-            const num = parseInt(numPart);
-            return isNaN(num) ? 0 : num;
+            return numPart === '' ? 1 : (parseInt(numPart) || 0);
         });
         const maxNum = existingNumbers.length > 0 ? Math.max(0, ...existingNumbers) : 0;
         finalTitle = `Nota sem título ${maxNum + 1}`;
@@ -105,24 +122,27 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
 
     try {
       await updateDoc(noteRef, { ...dataToSave });
+      lastSavedState.current = { title: dataToSave.title, content: dataToSave.content };
       if (isMounted.current) {
-        setSaveStatus('saved');
-        setTimeout(() => {
-          if (isMounted.current) setSaveStatus('idle');
+        setIsSaving(false);
+        setJustSaved(true);
+        justSavedTimeout.current = setTimeout(() => {
+          if (isMounted.current) setJustSaved(false);
         }, 2000);
       }
       return dataToSave.title;
     } catch (error) {
       console.error("Error updating note:", error);
-      if (isMounted.current) setSaveStatus('idle');
+      if (isMounted.current) {
+        setIsSaving(false);
+        setJustSaved(false);
+      }
       return '';
     }
   }, [noteId, title, content, allNotes]);
 
-
-  // Effect to auto-save the note when debounced values change
+  // Effect to auto-save
   useEffect(() => {
-    // Only run auto-save after initial load to prevent saving empty state
     if (hasLoadedFromServer.current) {
       performSave(false);
     }
@@ -146,8 +166,8 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   };
 
   const getStatusMessage = () => {
-    if (saveStatus === 'saving') return 'Salvando...';
-    if (saveStatus === 'saved') return 'Salvo ✅';
+    if (isSaving) return 'Salvando...';
+    if (justSaved) return 'Salvo ✅';
     if (updatedAt) {
         return `Salvo ${formatDistanceToNow(updatedAt, { addSuffix: true, locale: ptBR })}`;
     }
