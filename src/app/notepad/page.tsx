@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { PlusCircle, Trash2, X, Notebook } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 type Note = {
   id: number;
@@ -32,10 +32,32 @@ const initialNotes: Note[] = [
 ];
 
 export default function NotepadPage() {
-  const [notes, setNotes] = useState<Note[]>(initialNotes);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [isClient, setIsClient] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newNoteTitle, setNewNoteTitle] = useState('');
   const [newNoteContent, setNewNoteContent] = useState('');
+
+  useEffect(() => {
+    setIsClient(true);
+    try {
+      const storedNotes = localStorage.getItem('notepad_notes');
+      if (storedNotes) {
+        setNotes(JSON.parse(storedNotes));
+      } else {
+        setNotes(initialNotes);
+      }
+    } catch (error) {
+      console.error("Could not load notes from local storage", error);
+      setNotes(initialNotes);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isClient) {
+      localStorage.setItem('notepad_notes', JSON.stringify(notes));
+    }
+  }, [notes, isClient]);
 
   const handleAddNote = () => {
     if (!newNoteTitle.trim() || !newNoteContent.trim()) return;
@@ -55,6 +77,28 @@ export default function NotepadPage() {
   const handleDeleteNote = (id: number) => {
     setNotes(notes.filter((note) => note.id !== id));
   };
+
+  if (!isClient) {
+    return (
+      <AppLayout>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold tracking-tight">Notepad</h1>
+              <p className="text-muted-foreground">
+                Create and manage your personal notes.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30 py-16 text-center">
+            <Notebook className="h-12 w-12 text-muted-foreground/50 mb-4 animate-pulse" />
+            <h3 className="text-xl font-semibold">Loading Notes...</h3>
+            <p className="text-muted-foreground">Please wait a moment.</p>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

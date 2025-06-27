@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/sidebar";
 import {
   LayoutDashboard,
-  Gauge,
   Notebook,
   Network,
 } from "lucide-react";
@@ -27,11 +26,6 @@ const menuItems = [
     href: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
-  },
-  {
-    href: "/speed-test",
-    label: "Speed Test",
-    icon: Gauge,
   },
   {
     href: "/notepad",
