@@ -85,7 +85,7 @@ export default function NoteEditor() {
     }
   }, [notes, isLoaded]);
 
-  // The function that performs the "save" by updating the timestamp
+  // The function that performs the "save" by updating the timestamp (for AUTOSAVE)
   const handleSaveNote = useCallback(() => {
     if (!currentNoteId) return;
 
@@ -103,6 +103,35 @@ export default function NoteEditor() {
     }, 300);
   }, [currentNoteId]);
   
+  // Saves the current note and creates a new blank one
+  const handleSaveAndCreateNew = useCallback(() => {
+    if (!currentNoteId) return;
+
+    setSaveStatus('saving');
+
+    setTimeout(() => {
+      const newNote: Note = {
+        id: crypto.randomUUID(),
+        title: '',
+        content: '',
+        savedAt: new Date().toISOString(),
+      };
+      
+      setNotes(currentNotes => {
+        const updatedNotes = currentNotes.map(note =>
+          note.id === currentNoteId ? { ...note, savedAt: new Date().toISOString() } : note
+        );
+        
+        return [newNote, ...updatedNotes].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+      });
+      
+      setCurrentNoteId(newNote.id);
+      
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }, 300);
+  }, [currentNoteId]);
+
   // Trigger autosave when debounced title or content changes
   useEffect(() => {
     if (isLoaded && currentNote) {
@@ -218,7 +247,7 @@ export default function NoteEditor() {
           aria-label="Título da nota"
         />
         
-        <Button onClick={handleSaveNote} variant="outline" size="icon" aria-label="Salvar nota agora">
+        <Button onClick={handleSaveAndCreateNew} variant="outline" size="icon" aria-label="Salvar nota e criar uma nova">
           <Save className="h-5 w-5" />
         </Button>
 
