@@ -19,6 +19,24 @@ type Note = {
 
 const LOCAL_STORAGE_KEY = 'notepad_notes_history';
 
+// Helper to generate the next title for untitled notes
+const getNextNoteTitle = (notes: Note[], currentId: string | null) => {
+  const notePattern = /^Nota (\d+)$/;
+  let maxNum = 0;
+  notes.forEach(note => {
+    if (note.id !== currentId) {
+      const match = note.title.match(notePattern);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+  });
+  return `Nota ${maxNum + 1}`;
+};
+
 export default function NoteEditor() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
@@ -93,11 +111,22 @@ export default function NoteEditor() {
     // Using a timeout to ensure the 'saving' message is visible for a moment
     // as state updates can be very fast.
     setTimeout(() => {
-      setNotes(currentNotes =>
-        currentNotes.map(note =>
-          note.id === currentNoteId ? { ...note, savedAt: new Date().toISOString() } : note
-        ).sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
-      );
+      setNotes(currentNotes => {
+        const noteToUpdate = currentNotes.find(note => note.id === currentNoteId);
+        if (!noteToUpdate) return currentNotes;
+
+        let finalTitle = noteToUpdate.title;
+        // Assign a default title if the current one is empty but there is content
+        if (!finalTitle.trim() && noteToUpdate.content.trim()) {
+            finalTitle = getNextNoteTitle(currentNotes, currentNoteId);
+        }
+        
+        const updatedList = currentNotes.map(note =>
+          note.id === currentNoteId ? { ...note, title: finalTitle, savedAt: new Date().toISOString() } : note
+        );
+        
+        return updatedList.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+      });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     }, 300);
@@ -118,8 +147,17 @@ export default function NoteEditor() {
       };
       
       setNotes(currentNotes => {
+        const noteToSave = currentNotes.find(note => note.id === currentNoteId);
+        if (!noteToSave) return [newNote, ...currentNotes];
+
+        let finalTitle = noteToSave.title;
+        // Assign a default title if the user saves without one
+        if (!finalTitle.trim()) {
+            finalTitle = getNextNoteTitle(currentNotes, currentNoteId);
+        }
+        
         const updatedNotes = currentNotes.map(note =>
-          note.id === currentNoteId ? { ...note, savedAt: new Date().toISOString() } : note
+          note.id === currentNoteId ? { ...note, title: finalTitle, savedAt: new Date().toISOString() } : note
         );
         
         return [newNote, ...updatedNotes].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
