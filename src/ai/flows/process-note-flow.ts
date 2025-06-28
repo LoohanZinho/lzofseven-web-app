@@ -19,6 +19,9 @@ const NoteActionInputSchema = z.object({
       'generate_title',
       'rephrase_formal',
       'rephrase_creative',
+      'simplify',
+      'expand',
+      'bullet_points',
     ])
     .describe('A ação de IA a ser executada.'),
 });
@@ -38,7 +41,7 @@ export async function processNote(
 function getPromptTemplate(action: NoteActionInput['action']): string {
   switch (action) {
     case 'summarize':
-      return 'Você é um assistente de escrita conciso. Resuma o seguinte texto em no máximo 3 frases claras e diretas. Sua resposta DEVE ser em português. Retorne apenas o resumo. Texto: {{{text}}}';
+      return 'Você é um assistente de escrita conciso. Resuma este trecho em até 2 frases objetivas. Sua resposta DEVE ser em português. Retorne apenas o resumo. Texto: {{{text}}}';
     case 'correct':
       return 'Você é um assistente de escrita e revisor especialista. Corrija a gramática e ortografia do texto a seguir, mantendo o estilo e a intenção original. Sua resposta DEVE ser em português. Retorne apenas o texto corrigido, sem adicionar comentários ou introduções. Texto: {{{text}}}';
     case 'generate_title':
@@ -46,7 +49,13 @@ function getPromptTemplate(action: NoteActionInput['action']): string {
     case 'rephrase_formal':
       return 'Reescreva o texto a seguir em um tom mais formal e profissional. Sua resposta DEVE ser em português. Retorne apenas o texto reescrito. Texto: {{{text}}}';
     case 'rephrase_creative':
-      return 'Parafraseie o texto a seguir de forma mais criativa e engajante. Sua resposta DEVE ser em português. Retorne apenas o texto reescrito. Texto: {{{text}}}';
+      return 'Parafraseie o texto a seguir mantendo o sentido original e usando palavras novas. Sua resposta DEVE ser em português. Retorne apenas o texto reescrito. Texto: {{{text}}}';
+    case 'simplify':
+      return 'Reescreva este texto em linguagem simples, para que qualquer pessoa possa entender. Sua resposta DEVE ser em português. Retorne apenas o texto reescrito. Texto: {{{text}}}';
+    case 'expand':
+      return 'Expanda este parágrafo adicionando mais detalhes, exemplos ou explicações. Mantenha o tom original. Sua resposta DEVE ser em português. Retorne apenas o texto expandido. Texto: {{{text}}}';
+    case 'bullet_points':
+      return 'Transforme o texto a seguir em uma lista de bullet points (tópicos). Sua resposta DEVE ser em português e formatada como uma lista simples, com cada ponto começando com um hífen (-). Retorne apenas a lista. Texto: {{{text}}}';
   }
 }
 

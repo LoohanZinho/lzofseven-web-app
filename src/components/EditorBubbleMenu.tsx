@@ -4,14 +4,22 @@ import React, { useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react';
 import {
-  TextQuote,
   Sparkles,
   FileSignature,
   Loader2,
-  WrapText
+  TextQuote,
+  WrapText,
+  CaseLower,
+  Expand,
+  List,
 } from 'lucide-react';
-import { Toggle } from '@/components/ui/toggle';
-import { Separator } from '@/components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 import { processNote, type NoteActionInput } from '@/ai/flows/process-note-flow';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,6 +28,18 @@ type Props = {
 };
 
 type AiAction = NoteActionInput['action'];
+
+const getActionTitle = (action: AiAction): string => {
+    switch(action) {
+        case 'correct': return 'Corrigido';
+        case 'summarize': return 'Resumido';
+        case 'rephrase_creative': return 'Parafraseado';
+        case 'simplify': return 'Simplificado';
+        case 'expand': return 'Expandido';
+        case 'bullet_points': return 'Convertido em tópicos';
+        default: return 'Ação de IA concluída';
+    }
+}
 
 export default function EditorBubbleMenu({ editor }: Props) {
   const [loadingAction, setLoadingAction] = useState<AiAction | null>(null);
@@ -46,7 +66,7 @@ export default function EditorBubbleMenu({ editor }: Props) {
       
       editor.chain().focus().deleteRange({ from, to }).insertContent(result).run();
 
-      toast({ title: 'Ação de IA concluída!' });
+      toast({ title: `${getActionTitle(action)} com sucesso!` });
     } catch (error) {
       console.error("AI action failed:", error);
       toast({ variant: 'destructive', title: 'Erro de IA', description: 'Não foi possível completar a ação.' });
@@ -55,42 +75,47 @@ export default function EditorBubbleMenu({ editor }: Props) {
     }
   };
   
-  const menuItems = [
-    { action: 'correct' as AiAction, icon: FileSignature, label: 'Corrigir' },
-    { action: 'summarize' as AiAction, icon: TextQuote, label: 'Resumir' },
-    { action: 'rephrase_creative' as AiAction, icon: WrapText, label: 'Parafrasear' },
+  const menuItems: { action: AiAction; icon: React.ElementType; label: string }[] = [
+    { action: 'correct', icon: FileSignature, label: 'Corrigir' },
+    { action: 'summarize', icon: TextQuote, label: 'Resumir' },
+    { action: 'rephrase_creative', icon: WrapText, label: 'Parafrasear' },
+    { action: 'simplify', icon: CaseLower, label: 'Simplificar' },
+    { action: 'expand', icon: Expand, label: 'Expandir' },
+    { action: 'bullet_points', icon: List, label: 'Gerar Tópicos' },
   ];
 
   return (
     <BubbleMenu
       editor={editor}
-      tippyOptions={{ duration: 100 }}
+      tippyOptions={{ duration: 100, placement: 'top-start' }}
       className="flex items-center gap-1 p-1 rounded-md bg-background border border-border shadow-lg"
       shouldShow={({ state, from, to }) => {
         return from !== to;
       }}
     >
-        <span className="text-sm font-semibold text-muted-foreground px-2 flex items-center gap-1">
-            <Sparkles className="h-4 w-4" /> IA
-        </span>
-        <Separator orientation="vertical" className="h-6" />
-        
-        {menuItems.map(item => (
-            <Toggle
-                key={item.action}
-                size="sm"
-                aria-label={item.label}
-                title={item.label}
-                disabled={!!loadingAction}
-                onPressedChange={() => handleAiAction(item.action)}
-            >
-                {loadingAction === item.action ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                    <item.icon className="h-4 w-4" />
-                )}
-            </Toggle>
-        ))}
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="p-1 h-auto">
+                    <Sparkles className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+                {menuItems.map(item => (
+                    <DropdownMenuItem 
+                        key={item.action} 
+                        onSelect={() => handleAiAction(item.action as AiAction)}
+                        disabled={!!loadingAction}
+                    >
+                        {loadingAction === item.action ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <item.icon className="mr-2 h-4 w-4" />
+                        )}
+                        <span>{item.label}</span>
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
     </BubbleMenu>
   );
 }
