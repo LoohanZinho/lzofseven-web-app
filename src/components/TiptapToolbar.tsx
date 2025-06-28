@@ -16,28 +16,18 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Separator } from './ui/separator';
 
 type Props = {
   editor: Editor | null;
   isAiLoading?: boolean;
-  onSummarize: () => void;
-  onCorrect: () => void;
   onGenerateTitle: () => void;
 };
 
 export default function TiptapToolbar({
   editor,
   isAiLoading,
-  onSummarize,
-  onCorrect,
   onGenerateTitle,
 }: Props) {
   if (!editor) {
@@ -125,25 +115,10 @@ export default function TiptapToolbar({
 
       <Separator orientation="vertical" className="h-6 mx-2" />
       
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" disabled={isAiLoading}>
-            {isAiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            <span className="sr-only">Ações de IA</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onSummarize}>
-            Resumir
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onCorrect}>
-            Corrigir Ortografia e Gramática
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onGenerateTitle}>
-            Gerar Título
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button variant="ghost" size="sm" disabled={isAiLoading} onClick={onGenerateTitle} title="Gerar Título com IA">
+        {isAiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+        <span className="sr-only">Gerar Título com IA</span>
+      </Button>
     </div>
   );
 }

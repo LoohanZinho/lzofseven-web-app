@@ -13,7 +13,13 @@ import { z } from 'genkit';
 const NoteActionInputSchema = z.object({
   text: z.string().describe('O texto da nota a ser processado.'),
   action: z
-    .enum(['summarize', 'correct', 'generate_title'])
+    .enum([
+      'summarize',
+      'correct',
+      'generate_title',
+      'rephrase_formal',
+      'rephrase_creative',
+    ])
     .describe('A ação de IA a ser executada.'),
 });
 export type NoteActionInput = z.infer<typeof NoteActionInputSchema>;
@@ -37,6 +43,10 @@ function getPromptTemplate(action: NoteActionInput['action']): string {
       return 'Você é um assistente de escrita e revisor especialista. Corrija a gramática e ortografia do texto a seguir, mantendo o estilo e a intenção original. Retorne apenas o texto corrigido, sem adicionar comentários ou introduções. Texto: {{{text}}}';
     case 'generate_title':
       return 'Você é um editor criativo. Baseado no conteúdo a seguir, sugira um título curto, chamativo e relevante (máximo de 5 palavras). Retorne apenas o título. Conteúdo: {{{text}}}';
+    case 'rephrase_formal':
+      return 'Reescreva o texto a seguir em um tom mais formal e profissional. Retorne apenas o texto reescrito. Texto: {{{text}}}';
+    case 'rephrase_creative':
+      return 'Parafraseie o texto a seguir de forma mais criativa e engajante. Retorne apenas o texto reescrito. Texto: {{{text}}}';
   }
 }
 

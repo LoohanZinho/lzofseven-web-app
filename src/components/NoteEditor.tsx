@@ -38,6 +38,7 @@ import Underline from '@tiptap/extension-underline';
 import Image from '@tiptap/extension-image';
 import TiptapToolbar from './TiptapToolbar';
 import { processNote } from '@/ai/flows/process-note-flow';
+import EditorBubbleMenu from './EditorBubbleMenu';
 
 
 type NoteEditorProps = {
@@ -404,10 +405,10 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     return 'Comece a escrever...';
   };
 
-  const handleAiAction = async (action: 'summarize' | 'correct' | 'generate_title') => {
+  const handleAiAction = async (action: 'generate_title') => {
     if (!editor || isAiLoading) return;
     
-    const textToProcess = action === 'generate_title' ? editor.getText() : editor.getHTML();
+    const textToProcess = editor.getText();
 
     if (!textToProcess.trim()) {
       toast({ variant: 'destructive', title: 'Conteúdo Vazio', description: 'Não há texto para processar.' });
@@ -420,8 +421,6 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
 
       if (action === 'generate_title') {
         setTitle(result);
-      } else {
-        editor.commands.setContent(result, true);
       }
       toast({ title: 'Ação de IA concluída!', description: `A nota foi processada com sucesso.` });
     } catch (error) {
@@ -479,6 +478,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   return (
     <div className="flex h-full flex-col">
       {PasswordPromptDialog}
+      {editor && <EditorBubbleMenu editor={editor} />}
       <div className="flex items-center justify-between border-b border-border p-4 gap-2">
         <Input
           value={title}
@@ -554,11 +554,9 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
           </div>
         ) : (
           <>
-            <TiptapToolbar 
+            <TiptapToolbar
               editor={editor}
               isAiLoading={isAiLoading}
-              onSummarize={() => handleAiAction('summarize')}
-              onCorrect={() => handleAiAction('correct')}
               onGenerateTitle={() => handleAiAction('generate_title')}
             />
             <EditorContent editor={editor} className="flex-grow overflow-y-auto" />
