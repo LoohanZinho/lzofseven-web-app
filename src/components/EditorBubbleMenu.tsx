@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react';
 import {
-  Sparkles,
   FileSignature,
   Loader2,
   TextQuote,
@@ -13,15 +12,14 @@ import {
   Expand,
   List,
 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { processNote, type NoteActionInput } from '@/ai/flows/process-note-flow';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 type Props = {
   editor: Editor | null;
@@ -93,29 +91,28 @@ export default function EditorBubbleMenu({ editor }: Props) {
         return from !== to;
       }}
     >
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="p-1 h-auto">
-                    <Sparkles className="h-4 w-4" />
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-                {menuItems.map(item => (
-                    <DropdownMenuItem 
-                        key={item.action} 
-                        onSelect={() => handleAiAction(item.action as AiAction)}
-                        disabled={!!loadingAction}
-                    >
-                        {loadingAction === item.action ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                            <item.icon className="mr-2 h-4 w-4" />
-                        )}
-                        <span>{item.label}</span>
-                    </DropdownMenuItem>
-                ))}
-            </DropdownMenuContent>
-        </DropdownMenu>
+      {menuItems.map(item => (
+        <Tooltip key={item.action}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleAiAction(item.action as AiAction)}
+              disabled={!!loadingAction}
+            >
+              {loadingAction === item.action ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <item.icon className="h-4 w-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{item.label}</p>
+          </TooltipContent>
+        </Tooltip>
+      ))}
     </BubbleMenu>
   );
 }
