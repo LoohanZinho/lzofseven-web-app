@@ -2,6 +2,7 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // Remova 'output: 'export',' se estiver aqui!
   typescript: {
     ignoreBuildErrors: true,
   },
