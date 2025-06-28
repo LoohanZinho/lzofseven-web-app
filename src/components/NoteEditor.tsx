@@ -37,6 +37,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Image from '@tiptap/extension-image';
 import TiptapToolbar from './TiptapToolbar';
+import { processNote } from '@/ai/flows/process-note-flow';
 
 
 type NoteEditorProps = {
@@ -84,6 +85,8 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const [passwordInput, setPasswordInput] = useState('');
   const [promptAction, setPromptAction] = useState<'unlock' | 'create'>('unlock');
   const [publicSlug, setPublicSlug] = useState<string | null>(null);
+
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   const { toast } = useToast();
   const debouncedTitle = useDebounce(title, 1500);
@@ -141,7 +144,6 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   useEffect(() => {
     setIsLoading(true);
     
-    // Reset password and lock status ONLY when the note ID actually changes
     if (lastKnownNoteId.current !== noteId) {
       sessionPassword.current = '';
       setIsLocked(false);
@@ -161,8 +163,14 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
       const dbEncrypted = data.encryptedContent || '';
       let newContent = '';
 
-      // Always update metadata
-      setTitle(currentTitle => docSnapshot.metadata.hasPendingWrites ? currentTitle : data.title || '');
+      if (docSnapshot.metadata.hasPendingWrites && sessionPassword.current) {
+         // Ignore server updates if we are in the middle of a client-side a change
+         // and the note is unlocked. This prevents the loop.
+         setIsLoading(false);
+         return;
+      }
+      
+      setTitle(data.title || '');
       setPinned(data.pinned || false);
       setUpdatedAt(data.updatedAt?.toDate() || null);
       setPublicSlug(data.publicSlug || null);
@@ -171,8 +179,6 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
       if (noteIsPrivate) {
         setEncryptedDbContent(dbEncrypted);
 
-        // If we have a password, try to decrypt. This handles server updates.
-        // If we don't, lock the note and prompt for it.
         if (sessionPassword.current) {
           try {
             const bytes = CryptoJS.AES.decrypt(dbEncrypted, sessionPassword.current);
@@ -194,7 +200,6 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
           setShowPasswordPrompt(true);
         }
       } else {
-        // Note is not private, so it can't be locked
         newContent = data.content || '';
         setContent(newContent);
         setIsLocked(false);
@@ -260,7 +265,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
         const encrypted = CryptoJS.AES.encrypt(currentContent, sessionPassword.current).toString();
         dataToSave.encryptedContent = encrypted;
         dataToSave.content = '';
-        setEncryptedDbContent(encrypted); // Keep our local encrypted state in sync
+        setEncryptedDbContent(encrypted);
     } else {
         dataToSave.content = currentContent;
         dataToSave.encryptedContent = '';
@@ -354,7 +359,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     } else if (promptAction === 'create') {
       sessionPassword.current = password;
       setIsPrivate(true);
-      setIsLocked(false); // A new password also unlocks the note
+      setIsLocked(false);
       setShowPasswordPrompt(false);
       setPasswordInput('');
       toast({ title: "Nota protegida 🔒", description: "Sua nota agora será salva com criptografia." });
@@ -399,6 +404,34 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     return 'Comece a escrever...';
   };
 
+  const handleAiAction = async (action: 'summarize' | 'correct' | 'generate_title') => {
+    if (!editor || isAiLoading) return;
+    
+    const textToProcess = action === 'generate_title' ? editor.getText() : editor.getHTML();
+
+    if (!textToProcess.trim()) {
+      toast({ variant: 'destructive', title: 'Conteúdo Vazio', description: 'Não há texto para processar.' });
+      return;
+    }
+
+    setIsAiLoading(true);
+    try {
+      const { result } = await processNote({ text: textToProcess, action });
+
+      if (action === 'generate_title') {
+        setTitle(result);
+      } else {
+        editor.commands.setContent(result, true);
+      }
+      toast({ title: 'Ação de IA concluída!', description: `A nota foi processada com sucesso.` });
+    } catch (error) {
+      console.error("AI action failed:", error);
+      toast({ variant: 'destructive', title: 'Erro de IA', description: 'Não foi possível completar a ação.' });
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const PasswordPromptDialog = (
     <AlertDialog open={showPasswordPrompt} onOpenChange={setShowPasswordPrompt}>
       <AlertDialogContent>
@@ -423,7 +456,6 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
           <AlertDialogCancel onClick={() => {
             setShowPasswordPrompt(false);
             setPasswordInput('');
-            // If user cancels unlock, we can't do anything, the note remains locked.
           }}>
             Cancelar
           </AlertDialogCancel>
@@ -522,7 +554,13 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
           </div>
         ) : (
           <>
-            <TiptapToolbar editor={editor} />
+            <TiptapToolbar 
+              editor={editor}
+              isAiLoading={isAiLoading}
+              onSummarize={() => handleAiAction('summarize')}
+              onCorrect={() => handleAiAction('correct')}
+              onGenerateTitle={() => handleAiAction('generate_title')}
+            />
             <EditorContent editor={editor} className="flex-grow overflow-y-auto" />
           </>
         )}

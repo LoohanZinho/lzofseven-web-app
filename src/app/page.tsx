@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { auth, db } from '@/firebase/firebaseConfig';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { isToday, isYesterday } from 'date-fns';
+import { CommandPalette } from '@/components/CommandPalette';
 
 export type NoteSummary = {
   id: string;
@@ -37,6 +38,7 @@ export default function HomePage() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [groupedNotes, setGroupedNotes] = useState<{ [key: string]: NoteSummary[] }>({});
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(firebaseUser => {
@@ -49,7 +51,6 @@ export default function HomePage() {
   useEffect(() => {
     if (user) {
       setLoadingNotes(true);
-      // Simplified query to avoid composite index requirement
       const q = query(
         collection(db, 'notes'),
         where('ownerId', '==', user.uid)
@@ -68,13 +69,9 @@ export default function HomePage() {
           });
         });
         
-        // Perform sorting on the client-side
         notesData.sort((a, b) => {
-          // Pinned notes first (descending)
           if (a.pinned && !b.pinned) return -1;
           if (!a.pinned && b.pinned) return 1;
-
-          // For notes with same pinned status, sort by date (descending)
           const dateA = a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(0);
           const dateB = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(0);
           return dateB.getTime() - dateA.getTime();
@@ -102,7 +99,7 @@ export default function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const handleNewNote = async (setActive = true) => {
+  const handleNewNote = useCallback(async (setActive = true) => {
     if (user) {
       const newNoteRef = await addDoc(collection(db, 'notes'), {
         title: '',
@@ -119,12 +116,12 @@ export default function HomePage() {
         setActiveNoteId(newNoteRef.id);
       }
     }
-  };
+  }, [user]);
 
   const filteredNotes = useMemo(() => {
     return notes.filter(note => {
       const searchMatch = searchTerm.length > 0 
-        ? note.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        ? (note.title || 'Nota sem título').toLowerCase().includes(searchTerm.toLowerCase()) || 
           note.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
         : true;
       
@@ -136,10 +133,13 @@ export default function HomePage() {
     });
   }, [notes, searchTerm, selectedTag]);
 
-  const handleDeleteNote = async (noteId: string) => {
-    const noteToDeleteIndex = filteredNotes.findIndex(n => n.id === noteId);
+  const handleDeleteNote = useCallback(async (noteId?: string) => {
+    const idToDelete = noteId || activeNoteId;
+    if (!idToDelete) return;
+
+    const noteToDeleteIndex = filteredNotes.findIndex(n => n.id === idToDelete);
     
-    if (noteId === activeNoteId) {
+    if (idToDelete === activeNoteId) {
       if (filteredNotes.length > 1) {
         const nextNote = filteredNotes[noteToDeleteIndex > 0 ? noteToDeleteIndex - 1 : 1];
         setActiveNoteId(nextNote.id);
@@ -148,12 +148,12 @@ export default function HomePage() {
       }
     }
     
-    await deleteDoc(doc(db, 'notes', noteId));
+    await deleteDoc(doc(db, 'notes', idToDelete));
     
     if (activeNoteId === null && filteredNotes.length <=1) {
         handleNewNote(true);
     }
-  }
+  }, [activeNoteId, filteredNotes, handleNewNote]);
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -201,6 +201,17 @@ export default function HomePage() {
     }
   }, [filteredNotes, activeNoteId]);
 
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setIsCommandPaletteOpen((open) => !open)
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, []);
+
   const handleSaveAndNew = async () => {
     await handleNewNote(true);
   }
@@ -244,6 +255,23 @@ export default function HomePage() {
   
   return (
     <div className="flex h-screen w-full flex-col bg-background text-foreground">
+      <CommandPalette
+        open={isCommandPaletteOpen}
+        setOpen={setIsCommandPaletteOpen}
+        notes={notes}
+        onSelectNote={(id) => {
+            setActiveNoteId(id);
+            setIsCommandPaletteOpen(false);
+        }}
+        onNewNote={() => {
+            handleNewNote(true);
+            setIsCommandPaletteOpen(false);
+        }}
+        onDeleteNote={() => {
+            handleDeleteNote();
+            setIsCommandPaletteOpen(false);
+        }}
+      />
       <Header 
         user={user} 
         searchTerm={searchTerm} 
