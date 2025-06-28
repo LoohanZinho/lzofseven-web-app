@@ -31,6 +31,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -78,6 +79,7 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('Comece a escrever...');
 
   const [isPrivate, setIsPrivate] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -141,6 +143,23 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
       }
     }
   }, [content, editor]);
+
+  useEffect(() => {
+    if (isSaving) {
+      setStatusMessage('Salvando...');
+    } else if (justSaved) {
+      setStatusMessage('Salvo ✅');
+    } else if (updatedAt) {
+      const updateMessage = () => {
+        setStatusMessage(`Salvo ${formatDistanceToNow(updatedAt, { addSuffix: true, locale: ptBR })}`);
+      };
+      updateMessage();
+      const interval = setInterval(updateMessage, 60000); // Update every minute
+      return () => clearInterval(interval);
+    } else {
+      setStatusMessage('Comece a escrever...');
+    }
+  }, [isSaving, justSaved, updatedAt]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -396,15 +415,6 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
     toast({ title: "Link copiado!", description: "Link copiado para a área de transferência."});
   }
 
-  const getStatusMessage = () => {
-    if (isSaving) return 'Salvando...';
-    if (justSaved) return 'Salvo ✅';
-    if (updatedAt) {
-        return `Salvo ${formatDistanceToNow(updatedAt, { addSuffix: true, locale: ptBR })}`;
-    }
-    return 'Comece a escrever...';
-  };
-
   const handleAiAction = async (action: 'generate_title') => {
     if (!editor || isAiLoading) return;
     
@@ -476,97 +486,99 @@ export default function NoteEditor({ noteId, allNotes, onSaveAndNew }: NoteEdito
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {PasswordPromptDialog}
-      {editor && <EditorBubbleMenu editor={editor} />}
-      <div className="flex items-center justify-between border-b border-border p-4 gap-2">
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Título da sua nota..."
-          className="h-auto flex-grow border-0 bg-transparent p-0 text-2xl font-bold focus-visible:ring-0 focus-visible:ring-offset-0"
-          aria-label="Título da nota"
-          disabled={isLocked}
-        />
-        <div className="flex items-center gap-1">
-           <div className="flex items-center space-x-2">
-                <Switch id="private-note-toggle" checked={isPrivate} onCheckedChange={handleTogglePrivate} disabled={isLoading || isLocked}/>
-                <Label htmlFor="private-note-toggle">Privada</Label>
-            </div>
-          <Button variant="ghost" size="icon" onClick={handleManualSave} aria-label="Salvar nota e criar nova">
-            <Save className="h-5 w-5 text-muted-foreground" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={handleTogglePin} aria-label="Fixar nota">
-            <Pin className={cn("h-5 w-5", pinned ? "fill-current text-foreground" : "text-muted-foreground")} />
-          </Button>
-          <Popover>
-            <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Compartilhar nota" disabled={isPrivate || isLocked}>
-                    <Share2 className="h-5 w-5 text-muted-foreground" />
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80">
-                <div className="grid gap-4">
-                    <div className="space-y-2">
-                        <h4 className="font-medium leading-none">Compartilhar Nota</h4>
-                        <p className="text-sm text-muted-foreground">
-                            {publicSlug 
-                                ? "Qualquer pessoa com este link poderá ver esta nota."
-                                : "Gere um link público para compartilhar esta nota (somente leitura)."
-                            }
-                        </p>
-                    </div>
-                    {publicSlug ? (
-                        <div className="grid gap-2">
-                            <Label htmlFor="link">Link Público</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="link"
-                                    value={`${window.location.origin}/n/${publicSlug}`}
-                                    readOnly
-                                    className="h-8 flex-1"
-                                />
-                                <Button onClick={handleCopyLink} size="icon" className="h-8 w-8">
-                                    <Copy className="h-4 w-4" />
-                                </Button>
-                            </div>
-                            <Button onClick={handleStopSharing} variant="destructive" size="sm" className="mt-2 w-full">
-                                <XCircle className="mr-2 h-4 w-4" />
-                                Parar de compartilhar
-                            </Button>
-                        </div>
-                    ) : (
-                        <Button onClick={handleGenerateLink} disabled={isPrivate || isLocked}>Gerar Link</Button>
-                    )}
-                </div>
-            </PopoverContent>
-        </Popover>
-        </div>
-      </div>
-
-      <div className="flex-1 flex flex-col">
-        {isLocked && isPrivate ? (
-          <div className="flex flex-col items-center justify-center flex-grow p-8 text-center bg-muted/20">
-              <Lock className="w-16 h-16 text-muted-foreground mb-4" />
-              <h2 className="text-2xl font-bold">Nota Bloqueada</h2>
-              <p className="text-muted-foreground mt-2">Esta nota está criptografada.</p>
-              <Button className="mt-6" onClick={() => { setPromptAction('unlock'); setShowPasswordPrompt(true); }}>Desbloquear Nota</Button>
+    <TooltipProvider>
+      <div className="flex h-full flex-col">
+        {PasswordPromptDialog}
+        {editor && <EditorBubbleMenu editor={editor} />}
+        <div className="flex items-center justify-between border-b border-border p-4 gap-2">
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Título da sua nota..."
+            className="h-auto flex-grow border-0 bg-transparent p-0 text-2xl font-bold focus-visible:ring-0 focus-visible:ring-offset-0"
+            aria-label="Título da nota"
+            disabled={isLocked}
+          />
+          <div className="flex items-center gap-1">
+            <div className="flex items-center space-x-2">
+                  <Switch id="private-note-toggle" checked={isPrivate} onCheckedChange={handleTogglePrivate} disabled={isLoading || isLocked}/>
+                  <Label htmlFor="private-note-toggle">Privada</Label>
+              </div>
+            <Button variant="ghost" size="icon" onClick={handleManualSave} aria-label="Salvar nota e criar nova">
+              <Save className="h-5 w-5 text-muted-foreground" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleTogglePin} aria-label="Fixar nota">
+              <Pin className={cn("h-5 w-5", pinned ? "fill-current text-foreground" : "text-muted-foreground")} />
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="Compartilhar nota" disabled={isPrivate || isLocked}>
+                      <Share2 className="h-5 w-5 text-muted-foreground" />
+                  </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                  <div className="grid gap-4">
+                      <div className="space-y-2">
+                          <h4 className="font-medium leading-none">Compartilhar Nota</h4>
+                          <p className="text-sm text-muted-foreground">
+                              {publicSlug 
+                                  ? "Qualquer pessoa com este link poderá ver esta nota."
+                                  : "Gere um link público para compartilhar esta nota (somente leitura)."
+                              }
+                          </p>
+                      </div>
+                      {publicSlug ? (
+                          <div className="grid gap-2">
+                              <Label htmlFor="link">Link Público</Label>
+                              <div className="flex gap-2">
+                                  <Input
+                                      id="link"
+                                      value={`${window.location.origin}/n/${publicSlug}`}
+                                      readOnly
+                                      className="h-8 flex-1"
+                                  />
+                                  <Button onClick={handleCopyLink} size="icon" className="h-8 w-8">
+                                      <Copy className="h-4 w-4" />
+                                  </Button>
+                              </div>
+                              <Button onClick={handleStopSharing} variant="destructive" size="sm" className="mt-2 w-full">
+                                  <XCircle className="mr-2 h-4 w-4" />
+                                  Parar de compartilhar
+                              </Button>
+                          </div>
+                      ) : (
+                          <Button onClick={handleGenerateLink} disabled={isPrivate || isLocked}>Gerar Link</Button>
+                      )}
+                  </div>
+              </PopoverContent>
+          </Popover>
           </div>
-        ) : (
-          <>
-            <TiptapToolbar
-              editor={editor}
-              isAiLoading={isAiLoading}
-              onGenerateTitle={() => handleAiAction('generate_title')}
-            />
-            <EditorContent editor={editor} className="flex-grow overflow-y-auto" />
-          </>
-        )}
-      </div>
+        </div>
 
-      <footer className="h-8 flex-shrink-0 border-t bg-background p-2 text-center text-xs text-muted-foreground">
-        {isLocked && isPrivate ? "Nota está bloqueada 🔒" : getStatusMessage()}
-      </footer>
-    </div>
+        <div className="flex-1 flex flex-col">
+          {isLocked && isPrivate ? (
+            <div className="flex flex-col items-center justify-center flex-grow p-8 text-center bg-muted/20">
+                <Lock className="w-16 h-16 text-muted-foreground mb-4" />
+                <h2 className="text-2xl font-bold">Nota Bloqueada</h2>
+                <p className="text-muted-foreground mt-2">Esta nota está criptografada.</p>
+                <Button className="mt-6" onClick={() => { setPromptAction('unlock'); setShowPasswordPrompt(true); }}>Desbloquear Nota</Button>
+            </div>
+          ) : (
+            <>
+              <TiptapToolbar
+                editor={editor}
+                isAiLoading={isAiLoading}
+                onGenerateTitle={() => handleAiAction('generate_title')}
+              />
+              <EditorContent editor={editor} className="flex-grow overflow-y-auto" />
+            </>
+          )}
+        </div>
+
+        <footer className="h-8 flex-shrink-0 border-t bg-background p-2 text-center text-xs text-muted-foreground">
+          {isLocked && isPrivate ? "Nota está bloqueada 🔒" : statusMessage}
+        </footer>
+      </div>
+    </TooltipProvider>
   );
 }
